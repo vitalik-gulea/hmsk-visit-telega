@@ -1,4 +1,4 @@
-import { getGoogleAuthClient } from './google-auth'
+import { getGoogleAuthClient } from './google-auth.js'
 
 const GOOGLE_SHEET_MIME_TYPE = 'application/vnd.google-apps.spreadsheet'
 export const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

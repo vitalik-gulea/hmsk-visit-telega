@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { fetchGroupSchedule } from './_lib/schedule'
+import { fetchGroupSchedule } from './_lib/schedule.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const group = req.query.group

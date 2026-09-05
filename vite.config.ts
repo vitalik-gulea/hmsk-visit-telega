@@ -84,7 +84,62 @@ function localApiPlugin(): Plugin {
           res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }))
         }
       })
+
+      server.middlewares.use(
+        '/api/auth-status',
+        postJsonHandler(async (body) => {
+          const { initData } = body
+          if (typeof initData !== 'string' || !initData) {
+            throw new MissingParamError('Missing "initData" in body')
+          }
+
+          const { verifyInitData } = await server.ssrLoadModule('/api/_lib/telegram.ts')
+          const user = verifyInitData(initData)
+          if (!user) return { status: 401, body: { error: 'Invalid Telegram signature' } }
+
+          const { isUserAllowed } = await server.ssrLoadModule('/api/_lib/users-sheet.ts')
+          return { status: 200, body: { allowed: await isUserAllowed(user.id), user } }
+        }),
+      )
+
+      server.middlewares.use(
+        '/api/auth-request',
+        postJsonHandler(async (body) => {
+          const { initData } = body
+          if (typeof initData !== 'string' || !initData) {
+            throw new MissingParamError('Missing "initData" in body')
+          }
+
+          const { verifyInitData } = await server.ssrLoadModule('/api/_lib/telegram.ts')
+          const user = verifyInitData(initData)
+          if (!user) return { status: 401, body: { error: 'Invalid Telegram signature' } }
+
+          const { requestAccess } = await server.ssrLoadModule('/api/_lib/access-request.ts')
+          const { alreadyAllowed } = await requestAccess(user)
+          return { status: 200, body: { ok: true, alreadyAllowed } }
+        }),
+      )
     },
+  }
+}
+
+function postJsonHandler(
+  handler: (body: Record<string, unknown>) => Promise<{ status: number; body: unknown }>,
+) {
+  return async (req: import('http').IncomingMessage, res: import('http').ServerResponse) => {
+    try {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(chunk as Buffer)
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}')
+      const { status, body: responseBody } = await handler(body)
+      res.statusCode = status
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify(responseBody))
+    } catch (error) {
+      res.statusCode = error instanceof MissingParamError ? 400 : 500
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }))
+    }
   }
 }
 

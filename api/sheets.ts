@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { fetchSheetTitles } from './_lib/google-sheets'
+import { fetchSheetTitles } from './_lib/google-sheets.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const spreadsheetId = req.query.spreadsheetId

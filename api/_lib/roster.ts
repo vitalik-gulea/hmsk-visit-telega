@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs'
-import { downloadAsXlsxBuffer, uploadXlsxBuffer } from './drive'
-import { resolveScheduleDate, isSameDate, toExcelSerialDate } from './dates'
-import { patchXlsxCells } from './xlsx-patch'
-import { getRequiredEnv } from './env'
+import { downloadAsXlsxBuffer, uploadXlsxBuffer } from './drive.js'
+import { resolveScheduleDate, isSameDate, toExcelSerialDate } from './dates.js'
+import { patchXlsxCells } from './xlsx-patch.js'
+import { getRequiredEnv } from './env.js'
 
 function getTrainingSpreadsheetId(): string {
   return getRequiredEnv('TRAINING_SPREADSHEET_ID')

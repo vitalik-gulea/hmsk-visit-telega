@@ -1,6 +1,6 @@
-import { getGoogleAuthClient } from './google-auth'
-import { canonicalizeGroupName } from './group-name'
-import { getRequiredEnv } from './env'
+import { getGoogleAuthClient } from './google-auth.js'
+import { canonicalizeGroupName } from './group-name.js'
+import { getRequiredEnv } from './env.js'
 
 function getScheduleSpreadsheetId(): string {
   return getRequiredEnv('SCHEDULE_SPREADSHEET_ID')

@@ -1,5 +1,5 @@
 import { JWT } from 'google-auth-library'
-import { getRequiredEnv } from './env'
+import { getRequiredEnv } from './env.js'
 
 function getCredentials() {
   const base64 = getRequiredEnv('GOOGLE_SERVICE_ACCOUNT_JSON_BASE64')

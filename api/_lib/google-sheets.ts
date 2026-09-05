@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs'
-import { downloadAsXlsxBuffer } from './drive'
+import { downloadAsXlsxBuffer } from './drive.js'
 
 export async function fetchSheetTitles(fileId: string) {
   const buffer = await downloadAsXlsxBuffer(fileId)
