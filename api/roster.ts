@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getRoster, saveAttendance } from './_lib/roster.js'
+import { notifyAdminError } from './_lib/telegram.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
@@ -15,6 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const entries = await getRoster(group, date)
       res.status(200).json({ entries })
     } catch (error) {
+      await notifyAdminError('GET /api/roster', error)
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
     }
     return
@@ -32,6 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await saveAttendance(group, date, updates)
       res.status(200).json({ ok: true })
     } catch (error) {
+      await notifyAdminError('POST /api/roster', error)
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
     }
     return

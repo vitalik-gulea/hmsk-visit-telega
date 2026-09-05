@@ -76,3 +76,20 @@ export function answerCallbackQuery(callbackQueryId: string, text: string) {
 export function editMessageText(chatId: string | number, messageId: number, text: string) {
   return callTelegramApi('editMessageText', { chat_id: chatId, message_id: messageId, text })
 }
+
+/**
+ * Best-effort error alert to the admin's Telegram chat. Never throws — a
+ * failed notification (e.g. missing env vars) shouldn't mask the original
+ * error or crash the handler that's already failing.
+ */
+export async function notifyAdminError(context: string, error: unknown): Promise<void> {
+  console.error(`[${context}]`, error)
+  const message = error instanceof Error ? error.message : String(error)
+
+  try {
+    const adminChatId = getRequiredEnv('TELEGRAM_ADMIN_CHAT_ID')
+    await sendTelegramMessage(adminChatId, `⚠️ Ошибка в ${context}:\n${message}`)
+  } catch (notifyError) {
+    console.error('Failed to notify admin about error:', notifyError)
+  }
+}

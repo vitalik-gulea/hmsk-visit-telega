@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { verifyInitData } from './_lib/telegram.js'
+import { notifyAdminError, verifyInitData } from './_lib/telegram.js'
 import { isUserAllowed } from './_lib/users-sheet.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -24,6 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const allowed = await isUserAllowed(user.id)
     res.status(200).json({ allowed, user })
   } catch (error) {
+    await notifyAdminError('POST /api/auth-status', error)
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
   }
 }

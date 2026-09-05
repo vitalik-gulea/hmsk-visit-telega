@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getRequiredEnv } from './_lib/env.js'
-import { answerCallbackQuery, editMessageText } from './_lib/telegram.js'
+import { answerCallbackQuery, editMessageText, notifyAdminError } from './_lib/telegram.js'
 import { appendAllowedUser } from './_lib/users-sheet.js'
 
 interface TelegramCallbackQuery {
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await answerCallbackQuery(callbackQuery.id, 'Неизвестное действие')
     }
   } catch (error) {
-    console.error(error)
+    await notifyAdminError('telegram-webhook callback', error)
     // Best-effort: the callback query itself may be why we're here (e.g. it
     // already expired), so this can fail too — never let it take down the
     // response to Telegram.
