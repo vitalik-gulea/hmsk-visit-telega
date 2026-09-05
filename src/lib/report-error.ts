@@ -12,10 +12,13 @@ export function reportError(context: string, error: unknown) {
 
 export function installGlobalErrorReporting() {
   window.addEventListener('error', (event) => {
-    reportError('window.onerror', event.error ?? event.message)
+    const error = event.error ?? event.message
+    console.error('[window.onerror]', error)
+    reportError('window.onerror', error)
   })
 
   window.addEventListener('unhandledrejection', (event) => {
+    console.error('[unhandledrejection]', event.reason)
     reportError('unhandledrejection', event.reason)
   })
 }
