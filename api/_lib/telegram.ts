@@ -77,14 +77,8 @@ export function editMessageText(chatId: string | number, messageId: number, text
   return callTelegramApi('editMessageText', { chat_id: chatId, message_id: messageId, text })
 }
 
-/**
- * Logs to the admin's Telegram chat too — see `installConsoleForwarding` below,
- * which every `console.error`/`console.warn` call in the app already goes
- * through. This just tags the message with where it came from.
- */
-export async function notifyAdminError(context: string, error: unknown): Promise<void> {
-  console.error(`[${context}]`, error)
-}
+const originalConsoleError = console.error.bind(console)
+const originalConsoleWarn = console.warn.bind(console)
 
 function formatLogArgs(args: unknown[]): string {
   return args
@@ -100,42 +94,59 @@ function formatLogArgs(args: unknown[]): string {
     .join(' ')
 }
 
+/**
+ * Sends one message to the admin's Telegram chat and waits for it to finish.
+ * Vercel functions freeze right after the response is sent, so anything
+ * fire-and-forget (an un-awaited fetch) risks being cut off mid-request —
+ * callers that need reliable delivery must `await` this before responding.
+ */
+async function sendAdminLog(text: string): Promise<void> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID
+  if (!botToken || !adminChatId) return
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: adminChatId, text: text.slice(0, 4000) }),
+    })
+    if (!response.ok) originalConsoleError('Failed to deliver admin log:', await response.text())
+  } catch (err) {
+    // Use the original console.error — the patched one below would recurse.
+    originalConsoleError('Failed to deliver admin log:', err)
+  }
+}
+
+/** Reports an error to the admin's Telegram chat. Always await this before responding. */
+export async function notifyAdminError(context: string, error: unknown): Promise<void> {
+  const detail = error instanceof Error ? (error.stack ?? error.message) : formatLogArgs([error])
+  originalConsoleError(`[${context}]`, error)
+  await sendAdminLog(`⚠️ Ошибка в ${context}:\n${detail}`)
+}
+
 let consoleForwardingInstalled = false
 
 /**
  * Mirrors every `console.error`/`console.warn` call to the admin's Telegram
  * chat, on top of the normal stdout/stderr output (which Vercel still
- * captures in its function logs). Best-effort and silent on failure — a
- * broken notification must never recurse back into console.error/warn.
+ * captures in its function logs). This is a best-effort safety net for
+ * errors we didn't explicitly wrap with `notifyAdminError` — since nothing
+ * awaits it, delivery can still be cut off if the handler responds
+ * immediately after logging with nothing else to await.
  */
 export function installConsoleForwarding(): void {
   if (consoleForwardingInstalled) return
   consoleForwardingInstalled = true
 
-  const originalError = console.error.bind(console)
-  const originalWarn = console.warn.bind(console)
-
-  function forward(icon: string, args: unknown[]) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN
-    const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID
-    if (!botToken || !adminChatId) return
-
-    const text = `${icon} ${formatLogArgs(args)}`.slice(0, 4000)
-    fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: adminChatId, text }),
-    }).catch(() => {})
-  }
-
   console.error = (...args: unknown[]) => {
-    originalError(...args)
-    forward('⚠️ error:', args)
+    originalConsoleError(...args)
+    void sendAdminLog(`⚠️ error: ${formatLogArgs(args)}`)
   }
 
   console.warn = (...args: unknown[]) => {
-    originalWarn(...args)
-    forward('⚡ warn:', args)
+    originalConsoleWarn(...args)
+    void sendAdminLog(`⚡ warn: ${formatLogArgs(args)}`)
   }
 }
 
