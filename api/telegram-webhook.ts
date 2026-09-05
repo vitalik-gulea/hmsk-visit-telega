@@ -26,47 +26,54 @@ function parseRequestMessage(text: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const secret = req.headers['x-telegram-bot-api-secret-token']
-  if (secret !== getRequiredEnv('TELEGRAM_WEBHOOK_SECRET')) {
-    res.status(401).json({ error: 'Invalid secret token' })
-    return
-  }
-
-  const callbackQuery = req.body?.callback_query as TelegramCallbackQuery | undefined
-  if (!callbackQuery?.data || !callbackQuery.message) {
-    res.status(200).json({ ok: true })
-    return
-  }
-
-  const adminChatId = getRequiredEnv('TELEGRAM_ADMIN_CHAT_ID')
-  if (String(callbackQuery.from.id) !== adminChatId) {
-    await answerCallbackQuery(callbackQuery.id, 'Только администратор может это подтвердить')
-    res.status(200).json({ ok: true })
-    return
-  }
-
-  const [action, idStr] = callbackQuery.data.split(':')
-  const { chat, message_id: messageId, text = '' } = callbackQuery.message
-
   try {
-    if (action === 'a') {
-      const { firstName, lastName, username } = parseRequestMessage(text)
-      await appendAllowedUser({ id: Number(idStr), firstName, lastName, username })
-      await editMessageText(chat.id, messageId, `${text}\n\n✅ Доступ одобрен`)
-      await answerCallbackQuery(callbackQuery.id, 'Доступ одобрен')
-    } else if (action === 'd') {
-      await editMessageText(chat.id, messageId, `${text}\n\n❌ Отклонено`)
-      await answerCallbackQuery(callbackQuery.id, 'Отклонено')
-    } else {
-      await answerCallbackQuery(callbackQuery.id, 'Неизвестное действие')
+    const secret = req.headers['x-telegram-bot-api-secret-token']
+    if (secret !== getRequiredEnv('TELEGRAM_WEBHOOK_SECRET')) {
+      res.status(401).json({ error: 'Invalid secret token' })
+      return
     }
-  } catch (error) {
-    await notifyAdminError('telegram-webhook callback', error)
-    // Best-effort: the callback query itself may be why we're here (e.g. it
-    // already expired), so this can fail too — never let it take down the
-    // response to Telegram.
-    await answerCallbackQuery(callbackQuery.id, 'Ошибка, попробуйте ещё раз').catch(() => {})
-  }
 
-  res.status(200).json({ ok: true })
+    const callbackQuery = req.body?.callback_query as TelegramCallbackQuery | undefined
+    if (!callbackQuery?.data || !callbackQuery.message) {
+      res.status(200).json({ ok: true })
+      return
+    }
+
+    const adminChatId = getRequiredEnv('TELEGRAM_ADMIN_CHAT_ID')
+    if (String(callbackQuery.from.id) !== adminChatId) {
+      await answerCallbackQuery(callbackQuery.id, 'Только администратор может это подтвердить')
+      res.status(200).json({ ok: true })
+      return
+    }
+
+    const [action, idStr] = callbackQuery.data.split(':')
+    const { chat, message_id: messageId, text = '' } = callbackQuery.message
+
+    try {
+      if (action === 'a') {
+        const { firstName, lastName, username } = parseRequestMessage(text)
+        await appendAllowedUser({ id: Number(idStr), firstName, lastName, username })
+        await editMessageText(chat.id, messageId, `${text}\n\n✅ Доступ одобрен`)
+        await answerCallbackQuery(callbackQuery.id, 'Доступ одобрен')
+      } else if (action === 'd') {
+        await editMessageText(chat.id, messageId, `${text}\n\n❌ Отклонено`)
+        await answerCallbackQuery(callbackQuery.id, 'Отклонено')
+      } else {
+        await answerCallbackQuery(callbackQuery.id, 'Неизвестное действие')
+      }
+    } catch (error) {
+      await notifyAdminError('telegram-webhook callback', error)
+      // Best-effort: the callback query itself may be why we're here (e.g. it
+      // already expired), so this can fail too — never let it take down the
+      // response to Telegram.
+      await answerCallbackQuery(callbackQuery.id, 'Ошибка, попробуйте ещё раз').catch(() => {})
+    }
+
+    res.status(200).json({ ok: true })
+  } catch (error) {
+    await notifyAdminError('telegram-webhook', error)
+    if (!res.headersSent) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
+    }
+  }
 }
