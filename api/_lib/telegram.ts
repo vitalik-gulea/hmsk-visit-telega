@@ -135,18 +135,25 @@ let consoleForwardingInstalled = false
  * awaits it, delivery can still be cut off if the handler responds
  * immediately after logging with nothing else to await.
  */
+// Node prints its own runtime notices (experimental features, deprecations)
+// via console.error/warn, prefixed like "(node:1234) ...". Not app errors —
+// skip forwarding those so the admin chat isn't spammed with Node internals.
+const NODE_RUNTIME_NOTICE = /^\(node:\d+\)/
+
 export function installConsoleForwarding(): void {
   if (consoleForwardingInstalled) return
   consoleForwardingInstalled = true
 
   console.error = (...args: unknown[]) => {
     originalConsoleError(...args)
-    void sendAdminLog(`⚠️ error: ${formatLogArgs(args)}`)
+    const text = formatLogArgs(args)
+    if (!NODE_RUNTIME_NOTICE.test(text)) void sendAdminLog(`⚠️ error: ${text}`)
   }
 
   console.warn = (...args: unknown[]) => {
     originalConsoleWarn(...args)
-    void sendAdminLog(`⚡ warn: ${formatLogArgs(args)}`)
+    const text = formatLogArgs(args)
+    if (!NODE_RUNTIME_NOTICE.test(text)) void sendAdminLog(`⚡ warn: ${text}`)
   }
 }
 
