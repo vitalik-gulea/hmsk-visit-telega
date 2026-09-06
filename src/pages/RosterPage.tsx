@@ -3,7 +3,6 @@ import { Navigate } from 'react-router-dom'
 import { Button } from '@heroui/react'
 import { useSelectedGroup } from '../context/selected-group'
 import { fetchRoster, saveAttendance, type RosterEntry } from '../lib/roster'
-import { SwipeCard } from '../components/SwipeCard'
 
 interface Decision {
   row: number
@@ -48,10 +47,10 @@ export function RosterPage() {
 
   const isDone = roster !== null && currentIndex >= roster.length
 
-  function handleSwipe(direction: 'left' | 'right') {
+  function handleDecision(present: boolean) {
     if (!roster) return
     const entry = roster[currentIndex]
-    setDecisions((prev) => [{ row: entry.row, name: entry.name, present: direction === 'right' }, ...prev])
+    setDecisions((prev) => [{ row: entry.row, name: entry.name, present }, ...prev])
     setCurrentIndex((prev) => prev + 1)
   }
 
@@ -90,10 +89,17 @@ export function RosterPage() {
           <p className="text-center text-sm text-foreground/60">
             {currentIndex + 1} из {roster.length}
           </p>
-          <SwipeCard key={roster[currentIndex].row} name={roster[currentIndex].name} onSwipe={handleSwipe} />
-          <p className="text-center text-xs text-foreground/50">
-            Свайп вправо — был(а), влево — не был(а)
-          </p>
+          <div className="flex h-52 w-full items-center justify-center rounded-3xl bg-surface p-6 text-center shadow-field">
+            <span className="text-xl font-semibold">{roster[currentIndex].name}</span>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" className="flex-1 border-2 border-danger text-danger" onPress={() => handleDecision(false)}>
+              Не был
+            </Button>
+            <Button variant="ghost" className="flex-1 border-2 border-success text-success" onPress={() => handleDecision(true)}>
+              Был
+            </Button>
+          </div>
         </>
       )}
 
