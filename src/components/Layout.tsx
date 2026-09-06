@@ -9,7 +9,7 @@ export function Layout() {
   const navigate = useNavigate()
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-4 py-3">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-4 pb-3 pt-[40px]">
         {!isHome && (
           <Button variant="ghost" size="sm" onPress={() => navigate(-1)} className="self-start">
             ←
