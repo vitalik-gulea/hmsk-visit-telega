@@ -9,7 +9,12 @@ export interface AttendanceUpdate {
   present: boolean
 }
 
-export async function fetchRoster(group: string, date: string): Promise<RosterEntry[]> {
+export interface Roster {
+  players: RosterEntry[]
+  coaches: RosterEntry[]
+}
+
+export async function fetchRoster(group: string, date: string): Promise<Roster> {
   const response = await fetch(
     `/api/roster?group=${encodeURIComponent(group)}&date=${encodeURIComponent(date)}`,
   )
@@ -19,7 +24,7 @@ export async function fetchRoster(group: string, date: string): Promise<RosterEn
     throw new Error(data.error ?? `Request failed with status ${response.status}`)
   }
 
-  return data.entries
+  return { players: data.players, coaches: data.coaches }
 }
 
 export async function saveAttendance(

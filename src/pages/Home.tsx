@@ -30,7 +30,7 @@ export function Home() {
 
   function handleSelect(groupName: string) {
     setSelectedGroup(groupName)
-    navigate('/calendar')
+    navigate('/menu')
   }
 
   return (

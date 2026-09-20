@@ -40,9 +40,55 @@ function localApiPlugin(): Plugin {
         jsonHandler(async (query) => {
           const group = query.get('group')
           if (!group) throw new MissingParamError('Missing "group" query parameter')
+          const filter = query.get('filter') ?? 'all'
 
           const { fetchGroupSchedule } = await server.ssrLoadModule('/api/_lib/schedule.ts')
-          return { schedule: await fetchGroupSchedule(group) }
+          return { schedule: await fetchGroupSchedule(group, filter) }
+        }),
+      )
+
+      server.middlewares.use(
+        '/api/attendance-months',
+        jsonHandler(async (query) => {
+          const group = query.get('group')
+          if (!group) throw new MissingParamError('Missing "group" query parameter')
+
+          const { fetchGroupScheduleMonths } = await server.ssrLoadModule('/api/_lib/schedule.ts')
+          return { months: await fetchGroupScheduleMonths(group) }
+        }),
+      )
+
+      server.middlewares.use(
+        '/api/attendance-players',
+        jsonHandler(async (query) => {
+          const group = query.get('group')
+          if (!group) throw new MissingParamError('Missing "group" query parameter')
+
+          const { getGroupPlayerNames } = await server.ssrLoadModule('/api/_lib/roster.ts')
+          return { players: await getGroupPlayerNames(group) }
+        }),
+      )
+
+      server.middlewares.use(
+        '/api/attendance-stats',
+        jsonHandler(async (query) => {
+          const group = query.get('group')
+          const player = query.get('player')
+          const period = query.get('period')
+          if (!group || !player || !period) {
+            throw new MissingParamError('Missing "group", "player" or "period" query parameter')
+          }
+
+          const match = period === 'all' ? null : period.match(/^(\d{4})-(\d{2})$/)
+          if (period !== 'all' && !match) throw new MissingParamError('Invalid "period" query parameter')
+
+          const parsedPeriod =
+            period === 'all'
+              ? { type: 'all' as const }
+              : { type: 'month' as const, year: Number(match![1]), month: Number(match![2]) }
+
+          const { getAttendanceStats } = await server.ssrLoadModule('/api/_lib/roster.ts')
+          return await getAttendanceStats(group, player, parsedPeriod)
         }),
       )
 
@@ -56,7 +102,7 @@ function localApiPlugin(): Plugin {
 
             const { getRoster } = await server.ssrLoadModule('/api/_lib/roster.ts')
             res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ entries: await getRoster(group, date) }))
+            res.end(JSON.stringify(await getRoster(group, date)))
             return
           }
 

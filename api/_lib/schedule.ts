@@ -1,6 +1,7 @@
 import { getGoogleAuthClient } from './google-auth.js'
 import { canonicalizeGroupName } from './group-name.js'
 import { getRequiredEnv } from './env.js'
+import { resolveScheduleDate, matchesWeekFilter, type WeekFilter } from './dates.js'
 
 function getScheduleSpreadsheetId(): string {
   return getRequiredEnv('SCHEDULE_SPREADSHEET_ID')
@@ -12,6 +13,27 @@ export interface ScheduleEntry {
   time: string
   hall: string
 }
+
+export interface ScheduleMonth {
+  year: number
+  month: number // 1–12
+  label: string
+}
+
+const MONTH_NAMES = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+]
 
 async function sheetsFetch(spreadsheetId: string, path: string, params: Record<string, string>) {
   const client = getGoogleAuthClient()
@@ -43,7 +65,10 @@ async function getFirstSheetTitle(spreadsheetId: string): Promise<string> {
   return firstSheet.properties.title
 }
 
-export async function fetchGroupSchedule(groupName: string): Promise<ScheduleEntry[]> {
+export async function fetchGroupSchedule(
+  groupName: string,
+  weekFilter: WeekFilter = 'all',
+): Promise<ScheduleEntry[]> {
   const targetKey = canonicalizeGroupName(groupName)
   if (!targetKey) {
     throw new Error(`Could not canonicalize group name: ${groupName}`)
@@ -63,10 +88,35 @@ export async function fetchGroupSchedule(groupName: string): Promise<ScheduleEnt
     const [date, day, time, hall, group] = row
     if (!date || !group) continue
     if (date.trim().toUpperCase() === 'ДАТА') continue // header row
-    if (canonicalizeGroupName(group) === targetKey) {
-      entries.push({ date, day: day ?? '', time: time ?? '', hall: hall ?? '' })
+    if (canonicalizeGroupName(group) !== targetKey) continue
+
+    if (weekFilter !== 'all') {
+      const resolvedDate = resolveScheduleDate(date)
+      if (!resolvedDate || !matchesWeekFilter(resolvedDate, weekFilter)) continue
     }
+
+    entries.push({ date, day: day ?? '', time: time ?? '', hall: hall ?? '' })
   }
 
   return entries
+}
+
+/** Distinct months the group has scheduled trainings in, in chronological order. */
+export async function fetchGroupScheduleMonths(groupName: string): Promise<ScheduleMonth[]> {
+  const entries = await fetchGroupSchedule(groupName)
+
+  const byKey = new Map<string, ScheduleMonth>()
+  for (const entry of entries) {
+    const date = resolveScheduleDate(entry.date)
+    if (!date) continue
+
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth() + 1
+    const key = `${year}-${month}`
+    if (!byKey.has(key)) {
+      byKey.set(key, { year, month, label: `${MONTH_NAMES[month - 1]} ${year}` })
+    }
+  }
+
+  return [...byKey.values()].sort((a, b) => a.year - b.year || a.month - b.month)
 }

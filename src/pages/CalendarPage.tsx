@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { Button } from '@heroui/react'
+import { Button, Chip } from '@heroui/react'
 import { useSelectedGroup } from '../context/selected-group'
-import { fetchSchedule, type ScheduleEntry } from '../lib/schedule'
+import { fetchSchedule, type ScheduleEntry, type WeekFilter } from '../lib/schedule'
+
+const WEEK_FILTERS: { key: WeekFilter; label: string }[] = [
+  { key: 'all', label: 'Все' },
+  { key: 'thisWeek', label: 'Эта неделя' },
+  { key: 'lastWeek', label: 'Прошлая неделя' },
+]
 
 export function CalendarPage() {
   const { selectedGroup, setSelectedDate } = useSelectedGroup()
   const [schedule, setSchedule] = useState<ScheduleEntry[] | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const [weekFilter, setWeekFilter] = useState<WeekFilter>('all')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -23,7 +30,7 @@ export function CalendarPage() {
     setScheduleError(null)
     setSelectedIndex(null)
 
-    fetchSchedule(selectedGroup)
+    fetchSchedule(selectedGroup, weekFilter)
       .then((result) => {
         if (!cancelled) setSchedule(result)
       })
@@ -34,7 +41,7 @@ export function CalendarPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedGroup])
+  }, [selectedGroup, weekFilter])
 
   if (!selectedGroup) {
     return <Navigate to="/" replace />
@@ -48,8 +55,30 @@ export function CalendarPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-24">
       <h1 className="text-lg font-semibold">Расписание группы</h1>
+
+      <div className="flex flex-wrap gap-2">
+        {WEEK_FILTERS.map(({ key, label }) => (
+          <Chip
+            key={key}
+            role="button"
+            tabIndex={0}
+            color={weekFilter === key ? 'accent' : 'default'}
+            variant={weekFilter === key ? 'primary' : 'soft'}
+            className="cursor-pointer select-none"
+            onClick={() => setWeekFilter(key)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setWeekFilter(key)
+              }
+            }}
+          >
+            {label}
+          </Chip>
+        ))}
+      </div>
 
       {scheduleError && (
         <p className="text-danger">Не удалось загрузить расписание: {scheduleError}</p>
@@ -58,7 +87,11 @@ export function CalendarPage() {
       {!scheduleError && !schedule && <p className="text-foreground/60">Загрузка...</p>}
 
       {schedule && schedule.length === 0 && (
-        <p className="text-foreground/60">Тренировки для этой группы не найдены.</p>
+        <p className="text-foreground/60">
+          {weekFilter === 'all'
+            ? 'Тренировки для этой группы не найдены.'
+            : 'Нет тренировок за этот период.'}
+        </p>
       )}
 
       {schedule && schedule.length > 0 && (
@@ -99,14 +132,16 @@ export function CalendarPage() {
       )}
 
       {schedule && schedule.length > 0 && (
-        <Button
-          variant="primary"
-          isDisabled={selectedIndex === null}
-          onPress={handleConfirm}
-          className="w-full"
-        >
-          Выбрать дату
-        </Button>
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <Button
+            variant="primary"
+            isDisabled={selectedIndex === null}
+            onPress={handleConfirm}
+            className="w-full"
+          >
+            Выбрать дату
+          </Button>
+        </div>
       )}
     </div>
   )

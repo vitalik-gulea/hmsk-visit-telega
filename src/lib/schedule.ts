@@ -5,8 +5,12 @@ export interface ScheduleEntry {
   hall: string
 }
 
-export async function fetchSchedule(group: string): Promise<ScheduleEntry[]> {
-  const response = await fetch(`/api/schedule?group=${encodeURIComponent(group)}`)
+export type WeekFilter = 'all' | 'thisWeek' | 'lastWeek'
+
+export async function fetchSchedule(group: string, filter: WeekFilter = 'all'): Promise<ScheduleEntry[]> {
+  const response = await fetch(
+    `/api/schedule?group=${encodeURIComponent(group)}&filter=${encodeURIComponent(filter)}`,
+  )
   const data = await response.json()
 
   if (!response.ok) {

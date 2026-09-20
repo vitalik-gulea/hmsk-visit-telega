@@ -13,8 +13,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-      const entries = await getRoster(group, date)
-      res.status(200).json({ entries })
+      const { players, coaches } = await getRoster(group, date)
+      res.status(200).json({ players, coaches })
     } catch (error) {
       await notifyAdminError('GET /api/roster', error)
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
