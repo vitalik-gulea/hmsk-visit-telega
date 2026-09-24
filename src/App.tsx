@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { useTheme } from '@heroui/react'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './context/auth'
 import { SelectedGroupProvider } from './context/selected-group'
 import { AuthGate } from './pages/AuthGate'
 import { Home } from './pages/Home'
-import { Settings } from './pages/Settings'
 import { GroupMenuPage } from './pages/GroupMenuPage'
 import { CalendarPage } from './pages/CalendarPage'
 import { RosterPage } from './pages/RosterPage'
@@ -25,6 +25,10 @@ function RequireCoach({ children }: { children: ReactNode }) {
 }
 
 function App() {
+  // No manual light/dark switch — the app always follows the OS/device
+  // preference, which this hook keeps applied to the document.
+  useTheme()
+
   return (
     <AuthProvider>
       <AuthGate>
@@ -52,7 +56,6 @@ function App() {
               <Route path="attendance" element={<AttendancePeriodPage />} />
               <Route path="attendance/player" element={<AttendancePlayerPage />} />
               <Route path="attendance/stats" element={<AttendanceStatsPage />} />
-              <Route path="settings" element={<Settings />} />
             </Route>
           </Routes>
         </SelectedGroupProvider>
