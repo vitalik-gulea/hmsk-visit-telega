@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getRequiredEnv } from './_lib/env.js'
 import { answerCallbackQuery, editMessageText, notifyAdminError } from './_lib/telegram.js'
-import { appendAllowedUser } from './_lib/users-sheet.js'
+import { appendAllowedUser, ROLE_COACH, ROLE_TRAINEE, type UserRole } from './_lib/users-sheet.js'
+
+const ROLE_BY_CODE: Record<string, UserRole> = { c: ROLE_COACH, t: ROLE_TRAINEE }
 
 interface TelegramCallbackQuery {
   id: string
@@ -46,16 +48,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const [action, idStr] = callbackQuery.data.split(':')
+    const parts = callbackQuery.data.split(':')
     const { chat, message_id: messageId, text = '' } = callbackQuery.message
 
     try {
-      if (action === 'a') {
-        const { firstName, lastName, username } = parseRequestMessage(text)
-        await appendAllowedUser({ id: Number(idStr), firstName, lastName, username })
-        await editMessageText(chat.id, messageId, `${text}\n\n✅ Доступ одобрен`)
-        await answerCallbackQuery(callbackQuery.id, 'Доступ одобрен')
-      } else if (action === 'd') {
+      if (parts[0] === 'a') {
+        const [, roleCode, idStr] = parts
+        const role = ROLE_BY_CODE[roleCode]
+        if (!role) {
+          await answerCallbackQuery(callbackQuery.id, 'Неизвестная роль')
+        } else {
+          const { firstName, lastName, username } = parseRequestMessage(text)
+          await appendAllowedUser({ id: Number(idStr), firstName, lastName, username, role })
+          await editMessageText(chat.id, messageId, `${text}\n\n✅ Доступ одобрен (роль: ${role})`)
+          await answerCallbackQuery(callbackQuery.id, 'Доступ одобрен')
+        }
+      } else if (parts[0] === 'd') {
         await editMessageText(chat.id, messageId, `${text}\n\n❌ Отклонено`)
         await answerCallbackQuery(callbackQuery.id, 'Отклонено')
       } else {

@@ -29,7 +29,16 @@ export async function driveFetch(
   return response
 }
 
-export async function downloadAsXlsxBuffer(fileId: string) {
+// Serverless functions reuse this module across invocations on the same warm
+// instance, so caching here saves a full Drive round trip + download for
+// back-to-back requests (e.g. viewing a roster right after saving it) even
+// though it can't be shared across the separate Vercel function per api/*.ts
+// file. Short TTL because the sheet can be edited directly in Drive too.
+const XLSX_CACHE_TTL_MS = 30_000
+const xlsxCache = new Map<string, { buffer: Buffer; expiresAt: number }>()
+const xlsxInflight = new Map<string, Promise<Buffer>>()
+
+async function fetchXlsxBuffer(fileId: string): Promise<Buffer> {
   const metadataResponse = await driveFetch(`files/${fileId}`, { fields: 'mimeType' })
   const { mimeType } = (await metadataResponse.json()) as { mimeType: string }
 
@@ -40,6 +49,24 @@ export async function downloadAsXlsxBuffer(fileId: string) {
     : await driveFetch(`files/${fileId}`, { alt: 'media' })
 
   return Buffer.from(await contentResponse.arrayBuffer())
+}
+
+export async function downloadAsXlsxBuffer(fileId: string): Promise<Buffer> {
+  const cached = xlsxCache.get(fileId)
+  if (cached && cached.expiresAt > Date.now()) return cached.buffer
+
+  const inflight = xlsxInflight.get(fileId)
+  if (inflight) return inflight
+
+  const promise = fetchXlsxBuffer(fileId)
+    .then((buffer) => {
+      xlsxCache.set(fileId, { buffer, expiresAt: Date.now() + XLSX_CACHE_TTL_MS })
+      return buffer
+    })
+    .finally(() => xlsxInflight.delete(fileId))
+
+  xlsxInflight.set(fileId, promise)
+  return promise
 }
 
 /**
@@ -68,4 +95,8 @@ export async function uploadXlsxBuffer(fileId: string, buffer: Buffer) {
     const body = await response.text()
     throw new Error(`Drive API upload error ${response.status}: ${body}`)
   }
+
+  // We already have the exact bytes now on Drive, so warm the cache with them
+  // instead of leaving the pre-save version to linger until it expires.
+  xlsxCache.set(fileId, { buffer, expiresAt: Date.now() + XLSX_CACHE_TTL_MS })
 }

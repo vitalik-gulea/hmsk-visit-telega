@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { fetchAuthStatus, requestAccess, type AuthUser } from '../lib/auth'
+import { fetchAuthStatus, requestAccess, ROLE_COACH, type AuthUser, type UserRole } from '../lib/auth'
 import { getTelegramWebApp } from '../lib/telegram'
 
 type AuthState =
   | { status: 'loading' }
   | { status: 'no-telegram' }
   | { status: 'error'; message: string }
-  | { status: 'allowed'; user: AuthUser }
+  | { status: 'allowed'; user: AuthUser; role: UserRole }
   | { status: 'denied'; user: AuthUser; requestSent: boolean }
-  | { status: 'authorized'; user: AuthUser }
+  | { status: 'authorized'; user: AuthUser; role: UserRole }
 
 interface AuthContextValue {
   state: AuthState
@@ -36,16 +36,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!initData) {
       // Outside Telegram there's no initData to verify — only acceptable
       // during local development, where we just skip straight to "in".
-      setState(import.meta.env.DEV ? { status: 'authorized', user: DEV_USER } : { status: 'no-telegram' })
+      setState(
+        import.meta.env.DEV
+          ? { status: 'authorized', user: DEV_USER, role: ROLE_COACH }
+          : { status: 'no-telegram' },
+      )
       return
     }
 
     fetchAuthStatus(initData)
-      .then(({ allowed, user }) => {
-        if (allowed && localStorage.getItem(STORAGE_KEY) === String(user.id)) {
-          setState({ status: 'authorized', user })
-        } else if (allowed) {
-          setState({ status: 'allowed', user })
+      .then(({ allowed, role, user }) => {
+        if (allowed && role && localStorage.getItem(STORAGE_KEY) === String(user.id)) {
+          setState({ status: 'authorized', user, role })
+        } else if (allowed && role) {
+          setState({ status: 'allowed', user, role })
         } else {
           setState({ status: 'denied', user, requestSent: false })
         }
@@ -57,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => {
       if (prev.status !== 'allowed') return prev
       localStorage.setItem(STORAGE_KEY, String(prev.user.id))
-      return { status: 'authorized', user: prev.user }
+      return { status: 'authorized', user: prev.user, role: prev.role }
     })
   }
 

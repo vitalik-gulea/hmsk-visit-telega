@@ -22,32 +22,50 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<Response> 
   return response
 }
 
+// Column E of the sheet holds the role, spelled out in Russian so it stays
+// directly editable by hand in Sheets. Rows created before this column
+// existed have nothing there, so they default to the coach role — every
+// user allowed prior to roles exists precisely because a coach approved them.
+export const ROLE_COACH = 'тренер'
+export const ROLE_TRAINEE = 'тренирующийся'
+export type UserRole = typeof ROLE_COACH | typeof ROLE_TRAINEE
+
+function parseRole(raw: string | undefined): UserRole {
+  return raw?.trim().toLowerCase() === ROLE_TRAINEE ? ROLE_TRAINEE : ROLE_COACH
+}
+
 export interface AllowedUser {
   firstName: string
   lastName: string
   username: string
   id: string
+  role: UserRole
 }
 
 export async function getAllowedUsers(): Promise<AllowedUser[]> {
   const spreadsheetId = getUsersSpreadsheetId()
-  const range = encodeURIComponent(`${SHEET_NAME}!A2:D`)
+  const range = encodeURIComponent(`${SHEET_NAME}!A2:E`)
   const response = await sheetsFetch(`${spreadsheetId}/values/${range}`)
   const { values } = (await response.json()) as { values?: string[][] }
 
   return (values ?? [])
     .filter((row) => row[3])
-    .map(([firstName, lastName, username, id]) => ({
+    .map(([firstName, lastName, username, id, role]) => ({
       firstName: firstName ?? '',
       lastName: lastName ?? '',
       username: username ?? '',
       id: String(id).trim(),
+      role: parseRole(role),
     }))
 }
 
-export async function isUserAllowed(telegramId: number): Promise<boolean> {
+export async function getAllowedUser(telegramId: number): Promise<AllowedUser | null> {
   const users = await getAllowedUsers()
-  return users.some((user) => user.id === String(telegramId))
+  return users.find((user) => user.id === String(telegramId)) ?? null
+}
+
+export async function isUserAllowed(telegramId: number): Promise<boolean> {
+  return (await getAllowedUser(telegramId)) !== null
 }
 
 export async function appendAllowedUser(user: {
@@ -55,15 +73,16 @@ export async function appendAllowedUser(user: {
   firstName: string
   lastName: string
   username: string
+  role: UserRole
 }): Promise<void> {
   const spreadsheetId = getUsersSpreadsheetId()
-  const range = encodeURIComponent(`${SHEET_NAME}!A:D`)
+  const range = encodeURIComponent(`${SHEET_NAME}!A:E`)
 
   await sheetsFetch(`${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      values: [[user.firstName, user.lastName, user.username, String(user.id)]],
+      values: [[user.firstName, user.lastName, user.username, String(user.id), user.role]],
     }),
   })
 }

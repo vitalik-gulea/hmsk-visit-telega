@@ -2,12 +2,44 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useSelectedGroup } from '../context/selected-group'
 import { fetchAttendancePlayers } from '../lib/attendance'
+import { useAuth } from '../context/auth'
+import { ROLE_COACH, type AuthUser } from '../lib/auth'
+
+function nameWords(...parts: string[]): string[] {
+  return parts
+    .join(' ')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+/**
+ * Trainees can't browse the whole roster (that would let them see anyone's
+ * attendance), so we match their Telegram name against the roster instead.
+ * Only an unambiguous match is trusted — anything else means we can't tell
+ * who they are, and they're sent to the coach rather than shown the list.
+ */
+function findOwnName(players: string[], user: AuthUser): string | null {
+  const own = nameWords(user.firstName, user.lastName)
+  if (own.length === 0) return null
+
+  const matches = players.filter((name) => {
+    const words = nameWords(name)
+    return own.every((word) => words.includes(word))
+  })
+
+  return matches.length === 1 ? matches[0] : null
+}
 
 export function AttendancePlayerPage() {
   const { selectedGroup, selectedPeriod, setSelectedPlayerName } = useSelectedGroup()
+  const { state } = useAuth()
   const [players, setPlayers] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  const isCoach = state.status === 'authorized' && state.role === ROLE_COACH
+  const user = state.status === 'authorized' ? state.user : null
 
   useEffect(() => {
     if (!selectedGroup) return
@@ -29,6 +61,15 @@ export function AttendancePlayerPage() {
     }
   }, [selectedGroup])
 
+  const ownName = !isCoach && players && user ? findOwnName(players, user) : null
+
+  useEffect(() => {
+    if (ownName) {
+      setSelectedPlayerName(ownName)
+      navigate('/attendance/stats', { replace: true })
+    }
+  }, [ownName, navigate, setSelectedPlayerName])
+
   if (!selectedGroup) {
     return <Navigate to="/" replace />
   }
@@ -39,6 +80,20 @@ export function AttendancePlayerPage() {
   function handlePick(name: string) {
     setSelectedPlayerName(name)
     navigate('/attendance/stats')
+  }
+
+  if (!isCoach) {
+    return (
+      <div className="flex flex-col gap-4">
+        {!error && !players && <p className="text-foreground/60">Загрузка...</p>}
+        {error && <p className="text-danger">Не удалось загрузить список игроков: {error}</p>}
+        {players && !ownName && (
+          <p className="text-foreground/60">
+            Не удалось найти вас в списке этой группы. Обратитесь к тренеру.
+          </p>
+        )}
+      </div>
+    )
   }
 
   return (

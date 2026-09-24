@@ -44,5 +44,13 @@ export function canonicalizeGroupName(raw: string): string | null {
     return `ГРУППА${groupNumberMatch[1]}`
   }
 
+  // Location-based short codes, e.g. "Пуш.1", "Ол1" — spelled identically on
+  // both the roster tab and the schedule sheet, so stripping separators is
+  // enough to line them up.
+  const locationCodeMatch = s.match(/^([А-Я]+)\.?\s*(\d+)$/)
+  if (locationCodeMatch) {
+    return `${locationCodeMatch[1]}${locationCodeMatch[2]}`
+  }
+
   return null
 }

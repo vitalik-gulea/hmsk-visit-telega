@@ -16,25 +16,37 @@ const MONTH_ABBREVIATIONS: [string, number][] = [
 export const SEASON_START_YEAR = 2026
 
 /**
- * Parses the schedule sheet's day-month-only dates ("31-авг.", "4-сент.") into
- * a real Date. The sheet never states a year, so we infer it from the club's
- * season: months from August onward belong to `seasonStartYear`, everything
- * else (Jan–Jul) belongs to the following year.
+ * Parses the schedule sheet's day-month-only dates ("31-авг.", "4-сент.") as
+ * well as the numeric "DD.MM" dates used when marking attendance ("23.09")
+ * into a real Date. Neither format states a year, so we infer it from the
+ * club's season: months from August onward belong to `seasonStartYear`,
+ * everything else (Jan–Jul) belongs to the following year.
  */
 export function resolveScheduleDate(raw: string, seasonStartYear: number = SEASON_START_YEAR): Date | null {
-  const match = raw
-    .trim()
-    .toLowerCase()
-    .match(/^(\d{1,2})[\s.-]+([а-яё]+)\.?/)
-  if (!match) return null
+  const trimmed = raw.trim().toLowerCase()
 
-  const day = Number(match[1])
-  const monthText = match[2]
-  const month = MONTH_ABBREVIATIONS.find(([abbrev]) => monthText.startsWith(abbrev))?.[1]
-  if (!month) return null
+  const monthNameMatch = trimmed.match(/^(\d{1,2})[\s.-]+([а-яё]+)\.?/)
+  if (monthNameMatch) {
+    const day = Number(monthNameMatch[1])
+    const monthText = monthNameMatch[2]
+    const month = MONTH_ABBREVIATIONS.find(([abbrev]) => monthText.startsWith(abbrev))?.[1]
+    if (!month) return null
 
-  const year = month >= 8 ? seasonStartYear : seasonStartYear + 1
-  return new Date(Date.UTC(year, month - 1, day))
+    const year = month >= 8 ? seasonStartYear : seasonStartYear + 1
+    return new Date(Date.UTC(year, month - 1, day))
+  }
+
+  const numericMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.?$/)
+  if (numericMatch) {
+    const day = Number(numericMatch[1])
+    const month = Number(numericMatch[2])
+    if (month < 1 || month > 12) return null
+
+    const year = month >= 8 ? seasonStartYear : seasonStartYear + 1
+    return new Date(Date.UTC(year, month - 1, day))
+  }
+
+  return null
 }
 
 export function isSameDate(a: Date, b: Date): boolean {

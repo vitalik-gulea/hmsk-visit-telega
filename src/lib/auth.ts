@@ -1,3 +1,7 @@
+export const ROLE_COACH = 'тренер'
+export const ROLE_TRAINEE = 'тренирующийся'
+export type UserRole = typeof ROLE_COACH | typeof ROLE_TRAINEE
+
 export interface AuthUser {
   id: number
   firstName: string
@@ -19,7 +23,9 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data
 }
 
-export function fetchAuthStatus(initData: string): Promise<{ allowed: boolean; user: AuthUser }> {
+export function fetchAuthStatus(
+  initData: string,
+): Promise<{ allowed: boolean; role: UserRole | null; user: AuthUser }> {
   return postJson('/api/auth-status', { initData })
 }
 
