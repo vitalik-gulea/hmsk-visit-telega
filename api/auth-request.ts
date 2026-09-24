@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requestAccess } from './_lib/access-request.js'
 import { notifyAdminError, verifyInitData } from './_lib/telegram.js'
+import { ROLE_COACH, ROLE_TRAINEE } from './_lib/users-sheet.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -9,9 +10,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { initData } = req.body ?? {}
+    const { initData, role, fullName } = req.body ?? {}
     if (typeof initData !== 'string' || !initData) {
       res.status(400).json({ error: 'Missing "initData" in body' })
+      return
+    }
+    if (role !== ROLE_COACH && role !== ROLE_TRAINEE) {
+      res.status(400).json({ error: 'Missing or invalid "role" in body' })
+      return
+    }
+    if (role === ROLE_TRAINEE && (typeof fullName !== 'string' || !fullName.trim())) {
+      res.status(400).json({ error: 'Missing "fullName" in body for a trainee' })
       return
     }
 
@@ -21,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { alreadyAllowed } = await requestAccess(user)
+    const { alreadyAllowed } = await requestAccess(user, role, role === ROLE_TRAINEE ? fullName.trim() : undefined)
     res.status(200).json({ ok: true, alreadyAllowed })
   } catch (error) {
     await notifyAdminError('POST /api/auth-request', error)

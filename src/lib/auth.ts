@@ -23,12 +23,22 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data
 }
 
-export function fetchAuthStatus(
-  initData: string,
-): Promise<{ allowed: boolean; role: UserRole | null; user: AuthUser }> {
+export interface AuthStatus {
+  allowed: boolean
+  role: UserRole | null
+  group: string | null
+  fullName: string | null
+  user: AuthUser
+}
+
+export function fetchAuthStatus(initData: string): Promise<AuthStatus> {
   return postJson('/api/auth-status', { initData })
 }
 
-export function requestAccess(initData: string): Promise<{ ok: boolean; alreadyAllowed: boolean }> {
-  return postJson('/api/auth-request', { initData })
+export function requestAccess(
+  initData: string,
+  role: UserRole,
+  fullName?: string,
+): Promise<{ ok: boolean; alreadyAllowed: boolean }> {
+  return postJson('/api/auth-request', { initData, role, fullName })
 }

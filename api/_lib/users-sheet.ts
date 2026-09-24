@@ -40,22 +40,28 @@ export interface AllowedUser {
   username: string
   id: string
   role: UserRole
+  // Only meaningful for trainees: the name they typed at signup (matched
+  // against the roster) and the group it resolved to. Empty for coaches.
+  fullName: string
+  group: string
 }
 
 export async function getAllowedUsers(): Promise<AllowedUser[]> {
   const spreadsheetId = getUsersSpreadsheetId()
-  const range = encodeURIComponent(`${SHEET_NAME}!A2:E`)
+  const range = encodeURIComponent(`${SHEET_NAME}!A2:G`)
   const response = await sheetsFetch(`${spreadsheetId}/values/${range}`)
   const { values } = (await response.json()) as { values?: string[][] }
 
   return (values ?? [])
     .filter((row) => row[3])
-    .map(([firstName, lastName, username, id, role]) => ({
+    .map(([firstName, lastName, username, id, role, fullName, group]) => ({
       firstName: firstName ?? '',
       lastName: lastName ?? '',
       username: username ?? '',
       id: String(id).trim(),
       role: parseRole(role),
+      fullName: fullName ?? '',
+      group: group ?? '',
     }))
 }
 
@@ -74,15 +80,27 @@ export async function appendAllowedUser(user: {
   lastName: string
   username: string
   role: UserRole
+  fullName?: string
+  group?: string
 }): Promise<void> {
   const spreadsheetId = getUsersSpreadsheetId()
-  const range = encodeURIComponent(`${SHEET_NAME}!A:E`)
+  const range = encodeURIComponent(`${SHEET_NAME}!A:G`)
 
   await sheetsFetch(`${spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      values: [[user.firstName, user.lastName, user.username, String(user.id), user.role]],
+      values: [
+        [
+          user.firstName,
+          user.lastName,
+          user.username,
+          String(user.id),
+          user.role,
+          user.fullName ?? '',
+          user.group ?? '',
+        ],
+      ],
     }),
   })
 }

@@ -3,8 +3,6 @@ import { getRequiredEnv } from './_lib/env.js'
 import { answerCallbackQuery, editMessageText, notifyAdminError } from './_lib/telegram.js'
 import { appendAllowedUser, ROLE_COACH, ROLE_TRAINEE, type UserRole } from './_lib/users-sheet.js'
 
-const ROLE_BY_CODE: Record<string, UserRole> = { c: ROLE_COACH, t: ROLE_TRAINEE }
-
 interface TelegramCallbackQuery {
   id: string
   data?: string
@@ -12,18 +10,33 @@ interface TelegramCallbackQuery {
   message?: { message_id: number; chat: { id: number }; text?: string }
 }
 
-/** Re-derives the requester's name/username from the message text this same
- * bot sent (see access-request.ts) rather than from callback_data, which is
- * capped at 64 bytes by Telegram. */
-function parseRequestMessage(text: string) {
+interface ParsedRequest {
+  firstName: string
+  lastName: string
+  username: string
+  role: UserRole
+  fullName: string
+  group: string
+}
+
+/** Re-derives the requester's name/role/username from the message text this
+ * same bot sent (see access-request.ts) rather than from callback_data, which
+ * is capped at 64 bytes by Telegram. */
+function parseRequestMessage(text: string): ParsedRequest {
   const nameLine = text.match(/^Имя: (.*)$/m)?.[1]?.trim() ?? ''
   const usernameLine = text.match(/^Username: (.*)$/m)?.[1]?.trim() ?? ''
+  const roleLine = text.match(/^Роль: (.*)$/m)?.[1]?.trim() ?? ''
+  const fullNameLine = text.match(/^ФИО в списке: (.*)$/m)?.[1]?.trim() ?? ''
+  const groupLine = text.match(/^Группа: (.*)$/m)?.[1]?.trim() ?? ''
   const [firstName = '', ...rest] = nameLine.split(' ')
 
   return {
     firstName,
     lastName: rest.join(' '),
     username: usernameLine.startsWith('@') ? usernameLine.slice(1) : '',
+    role: roleLine === 'Тренирующийся' ? ROLE_TRAINEE : ROLE_COACH,
+    fullName: fullNameLine && fullNameLine !== 'не указано' ? fullNameLine : '',
+    group: groupLine.startsWith('не найдена') ? '' : groupLine.split(' (в списке')[0].trim(),
   }
 }
 
@@ -48,22 +61,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const parts = callbackQuery.data.split(':')
+    const [action, idStr] = callbackQuery.data.split(':')
     const { chat, message_id: messageId, text = '' } = callbackQuery.message
 
     try {
-      if (parts[0] === 'a') {
-        const [, roleCode, idStr] = parts
-        const role = ROLE_BY_CODE[roleCode]
-        if (!role) {
-          await answerCallbackQuery(callbackQuery.id, 'Неизвестная роль')
-        } else {
-          const { firstName, lastName, username } = parseRequestMessage(text)
-          await appendAllowedUser({ id: Number(idStr), firstName, lastName, username, role })
-          await editMessageText(chat.id, messageId, `${text}\n\n✅ Доступ одобрен (роль: ${role})`)
-          await answerCallbackQuery(callbackQuery.id, 'Доступ одобрен')
-        }
-      } else if (parts[0] === 'd') {
+      if (action === 'a') {
+        const { firstName, lastName, username, role, fullName, group } = parseRequestMessage(text)
+        await appendAllowedUser({ id: Number(idStr), firstName, lastName, username, role, fullName, group })
+        await editMessageText(chat.id, messageId, `${text}\n\n✅ Доступ одобрен`)
+        await answerCallbackQuery(callbackQuery.id, 'Доступ одобрен')
+      } else if (action === 'd') {
         await editMessageText(chat.id, messageId, `${text}\n\n❌ Отклонено`)
         await answerCallbackQuery(callbackQuery.id, 'Отклонено')
       } else {

@@ -3,11 +3,10 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useSelectedGroup } from '../context/selected-group'
 import { fetchAttendancePlayers } from '../lib/attendance'
 import { useAuth } from '../context/auth'
-import { ROLE_COACH, type AuthUser } from '../lib/auth'
+import { ROLE_COACH } from '../lib/auth'
 
-function nameWords(...parts: string[]): string[] {
-  return parts
-    .join(' ')
+function nameWords(name: string): string[] {
+  return name
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
@@ -15,12 +14,13 @@ function nameWords(...parts: string[]): string[] {
 
 /**
  * Trainees can't browse the whole roster (that would let them see anyone's
- * attendance), so we match their Telegram name against the roster instead.
- * Only an unambiguous match is trusted — anything else means we can't tell
- * who they are, and they're sent to the coach rather than shown the list.
+ * attendance), so we match the name they gave at signup against the roster
+ * instead. Only an unambiguous match is trusted — anything else means we
+ * can't tell who they are, and they're sent to the coach rather than shown
+ * the list.
  */
-function findOwnName(players: string[], user: AuthUser): string | null {
-  const own = nameWords(user.firstName, user.lastName)
+function findOwnName(players: string[], fullName: string): string | null {
+  const own = nameWords(fullName)
   if (own.length === 0) return null
 
   const matches = players.filter((name) => {
@@ -39,7 +39,10 @@ export function AttendancePlayerPage() {
   const navigate = useNavigate()
 
   const isCoach = state.status === 'authorized' && state.role === ROLE_COACH
-  const user = state.status === 'authorized' ? state.user : null
+  const traineeName =
+    state.status === 'authorized'
+      ? state.fullName || [state.user.firstName, state.user.lastName].filter(Boolean).join(' ')
+      : ''
 
   useEffect(() => {
     if (!selectedGroup) return
@@ -61,7 +64,7 @@ export function AttendancePlayerPage() {
     }
   }, [selectedGroup])
 
-  const ownName = !isCoach && players && user ? findOwnName(players, user) : null
+  const ownName = !isCoach && players && traineeName ? findOwnName(players, traineeName) : null
 
   useEffect(() => {
     if (ownName) {

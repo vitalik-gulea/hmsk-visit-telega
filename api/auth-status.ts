@@ -22,7 +22,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const allowedUser = await getAllowedUser(user.id)
-    res.status(200).json({ allowed: allowedUser !== null, role: allowedUser?.role ?? null, user })
+    res.status(200).json({
+      allowed: allowedUser !== null,
+      role: allowedUser?.role ?? null,
+      group: allowedUser?.group || null,
+      fullName: allowedUser?.fullName || null,
+      user,
+    })
   } catch (error) {
     await notifyAdminError('POST /api/auth-status', error)
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })

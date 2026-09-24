@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card } from '@heroui/react'
 import { useSelectedGroup } from '../context/selected-group'
+import { useAuth } from '../context/auth'
+import { ROLE_TRAINEE } from '../lib/auth'
 import { fetchSheets, getCachedSheets, TRAINING_SPREADSHEET_ID, type SheetInfo } from '../lib/sheets'
 
 export function Home() {
+  const { state } = useAuth()
   const [sheets, setSheets] = useState<SheetInfo[] | null>(() =>
     getCachedSheets(TRAINING_SPREADSHEET_ID),
   )
@@ -12,7 +15,21 @@ export function Home() {
   const { setSelectedGroup } = useSelectedGroup()
   const navigate = useNavigate()
 
+  // A trainee's group was already resolved from their roster name at signup
+  // — send them straight into their own attendance instead of making them
+  // pick from (and see) the full list of groups.
+  const knownTraineeGroup =
+    state.status === 'authorized' && state.role === ROLE_TRAINEE ? state.group : null
+
   useEffect(() => {
+    if (knownTraineeGroup) {
+      setSelectedGroup(knownTraineeGroup)
+      navigate('/attendance', { replace: true })
+    }
+  }, [knownTraineeGroup, navigate, setSelectedGroup])
+
+  useEffect(() => {
+    if (knownTraineeGroup) return
     let cancelled = false
 
     fetchSheets(TRAINING_SPREADSHEET_ID)
@@ -26,11 +43,15 @@ export function Home() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [knownTraineeGroup])
 
   function handleSelect(groupName: string) {
     setSelectedGroup(groupName)
     navigate('/menu')
+  }
+
+  if (knownTraineeGroup) {
+    return <p className="text-foreground/60">Загрузка...</p>
   }
 
   return (

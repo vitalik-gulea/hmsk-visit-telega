@@ -2,18 +2,26 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { fetchAuthStatus, requestAccess, ROLE_COACH, type AuthUser, type UserRole } from '../lib/auth'
 import { getTelegramWebApp } from '../lib/telegram'
 
+interface Profile {
+  role: UserRole
+  // Only ever set for a trainee: the roster name matched at signup and the
+  // group it resolved to (empty when the match was ambiguous or skipped).
+  group: string | null
+  fullName: string | null
+}
+
 type AuthState =
   | { status: 'loading' }
   | { status: 'no-telegram' }
   | { status: 'error'; message: string }
-  | { status: 'allowed'; user: AuthUser; role: UserRole }
+  | ({ status: 'allowed'; user: AuthUser } & Profile)
   | { status: 'denied'; user: AuthUser; requestSent: boolean }
-  | { status: 'authorized'; user: AuthUser; role: UserRole }
+  | ({ status: 'authorized'; user: AuthUser } & Profile)
 
 interface AuthContextValue {
   state: AuthState
   login: () => void
-  sendRequest: () => Promise<void>
+  sendRequest: (role: UserRole, fullName?: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -38,18 +46,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // during local development, where we just skip straight to "in".
       setState(
         import.meta.env.DEV
-          ? { status: 'authorized', user: DEV_USER, role: ROLE_COACH }
+          ? { status: 'authorized', user: DEV_USER, role: ROLE_COACH, group: null, fullName: null }
           : { status: 'no-telegram' },
       )
       return
     }
 
     fetchAuthStatus(initData)
-      .then(({ allowed, role, user }) => {
+      .then(({ allowed, role, group, fullName, user }) => {
         if (allowed && role && localStorage.getItem(STORAGE_KEY) === String(user.id)) {
-          setState({ status: 'authorized', user, role })
+          setState({ status: 'authorized', user, role, group, fullName })
         } else if (allowed && role) {
-          setState({ status: 'allowed', user, role })
+          setState({ status: 'allowed', user, role, group, fullName })
         } else {
           setState({ status: 'denied', user, requestSent: false })
         }
@@ -61,16 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => {
       if (prev.status !== 'allowed') return prev
       localStorage.setItem(STORAGE_KEY, String(prev.user.id))
-      return { status: 'authorized', user: prev.user, role: prev.role }
+      return { status: 'authorized', user: prev.user, role: prev.role, group: prev.group, fullName: prev.fullName }
     })
   }
 
-  async function sendRequest() {
+  async function sendRequest(role: UserRole, fullName?: string) {
     if (state.status !== 'denied') return
     const initData = getTelegramWebApp()?.initData
     if (!initData) return
 
-    await requestAccess(initData)
+    await requestAccess(initData, role, fullName)
     setState({ status: 'denied', user: state.user, requestSent: true })
   }
 

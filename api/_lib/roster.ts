@@ -197,6 +197,56 @@ export async function getGroupPlayerNames(groupName: string): Promise<string[]> 
   return names
 }
 
+function normalizedNameWords(name: string): string[] {
+  return name
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+}
+
+function sameWords(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((word, i) => word === b[i])
+}
+
+export interface PlayerGroupMatch {
+  group: string
+  name: string
+}
+
+/**
+ * Finds which single group sheet a player belongs to by exact (order-
+ * independent) name match, so a trainee's signup request can be pre-filled
+ * with their group. Deliberately strict: a name that matches nobody, or more
+ * than one person, returns null rather than guessing — this result later
+ * gates what a trainee is allowed to see, so a wrong guess would be a privacy
+ * leak, not just a UX glitch.
+ */
+export async function findPlayerGroup(fullName: string): Promise<PlayerGroupMatch | null> {
+  const target = normalizedNameWords(fullName)
+  if (target.length === 0) return null
+
+  const buffer = await downloadAsXlsxBuffer(getTrainingSpreadsheetId())
+  const workbook = await loadWorkbook(buffer)
+
+  const matches: PlayerGroupMatch[] = []
+  for (const sheet of workbook.worksheets) {
+    for (let r = FIRST_DATA_ROW; r <= sheet.rowCount; r++) {
+      const indexCell = sheet.getRow(r).getCell(INDEX_COLUMN).value
+      if (typeof indexCell !== 'number') break
+
+      const nameCell = sheet.getRow(r).getCell(NAME_COLUMN).value
+      const name = typeof nameCell === 'string' ? nameCell.trim() : ''
+      if (name && sameWords(normalizedNameWords(name), target)) {
+        matches.push({ group: sheet.name, name })
+      }
+    }
+  }
+
+  return matches.length === 1 ? matches[0] : null
+}
+
 function findPlayerRow(sheet: ExcelJS.Worksheet, playerName: string): number | null {
   const target = playerName.trim()
   for (let r = FIRST_DATA_ROW; r <= sheet.rowCount; r++) {
