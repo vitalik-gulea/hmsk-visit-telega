@@ -39,6 +39,7 @@ export function requestAccess(
   initData: string,
   role: UserRole,
   fullName?: string,
+  group?: string,
 ): Promise<{ ok: boolean; alreadyAllowed: boolean }> {
-  return postJson('/api/auth-request', { initData, role, fullName })
+  return postJson('/api/auth-request', { initData, role, fullName, group })
 }

@@ -10,7 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { initData, role, fullName } = req.body ?? {}
+    const { initData, role, fullName, group } = req.body ?? {}
     if (typeof initData !== 'string' || !initData) {
       res.status(400).json({ error: 'Missing "initData" in body' })
       return
@@ -23,6 +23,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(400).json({ error: 'Missing "fullName" in body for a trainee' })
       return
     }
+    if (role === ROLE_TRAINEE && (typeof group !== 'string' || !group.trim())) {
+      res.status(400).json({ error: 'Missing "group" in body for a trainee' })
+      return
+    }
 
     const user = verifyInitData(initData)
     if (!user) {
@@ -30,7 +34,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { alreadyAllowed } = await requestAccess(user, role, role === ROLE_TRAINEE ? fullName.trim() : undefined)
+    const { alreadyAllowed } = await requestAccess(
+      user,
+      role,
+      role === ROLE_TRAINEE ? fullName.trim() : undefined,
+      role === ROLE_TRAINEE ? group.trim() : undefined,
+    )
     res.status(200).json({ ok: true, alreadyAllowed })
   } catch (error) {
     await notifyAdminError('POST /api/auth-request', error)

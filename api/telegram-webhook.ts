@@ -35,8 +35,8 @@ function parseRequestMessage(text: string): ParsedRequest {
     lastName: rest.join(' '),
     username: usernameLine.startsWith('@') ? usernameLine.slice(1) : '',
     role: roleLine === 'Тренирующийся' ? ROLE_TRAINEE : ROLE_COACH,
-    fullName: fullNameLine && fullNameLine !== 'не указано' ? fullNameLine : '',
-    group: groupLine.startsWith('не найдена') ? '' : groupLine.split(' (в списке')[0].trim(),
+    fullName: fullNameLine,
+    group: groupLine,
   }
 }
 

@@ -4,8 +4,8 @@ import { getTelegramWebApp } from '../lib/telegram'
 
 interface Profile {
   role: UserRole
-  // Only ever set for a trainee: the roster name matched at signup and the
-  // group it resolved to (empty when the match was ambiguous or skipped).
+  // Only ever set for a trainee: the exact roster name and group they picked
+  // at signup.
   group: string | null
   fullName: string | null
 }
@@ -21,7 +21,7 @@ type AuthState =
 interface AuthContextValue {
   state: AuthState
   login: () => void
-  sendRequest: (role: UserRole, fullName?: string) => Promise<void>
+  sendRequest: (role: UserRole, fullName?: string, group?: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -73,12 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  async function sendRequest(role: UserRole, fullName?: string) {
+  async function sendRequest(role: UserRole, fullName?: string, group?: string) {
     if (state.status !== 'denied') return
     const initData = getTelegramWebApp()?.initData
     if (!initData) return
 
-    await requestAccess(initData, role, fullName)
+    await requestAccess(initData, role, fullName, group)
     setState({ status: 'denied', user: state.user, requestSent: true })
   }
 
