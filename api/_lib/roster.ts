@@ -197,11 +197,47 @@ export async function getGroupPlayerNames(groupName: string): Promise<string[]> 
   return names
 }
 
-function normalizedNameWords(name: string): string[] {
-  return name
+const CYRILLIC_TO_LATIN: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh',
+  щ: 'shch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+}
+
+/**
+ * Reduces a word to a script-agnostic "phonetic key" so a name typed in
+ * Latin letters (people transliterate their own name however feels natural,
+ * not by one fixed convention) still lines up with the same name spelled in
+ * Cyrillic in the roster. Deliberately loose — a collision here only ever
+ * makes a match *more* ambiguous (which findPlayerGroup rejects outright),
+ * never wrongly confident, so over-collapsing is the safe direction to err
+ * in.
+ */
+function phoneticKey(word: string): string {
+  const latin = word
     .toLowerCase()
-    .replace(/ё/g, 'е')
+    .split('')
+    .map((ch) => CYRILLIC_TO_LATIN[ch] ?? ch)
+    .join('')
+
+  return latin
+    .replace(/shch|sch/g, 'sh')
+    .replace(/kh/g, 'h')
+    .replace(/ts|tz/g, 'c')
+    .replace(/zh/g, 'j')
+    .replace(/yu|iu|ju/g, 'u')
+    .replace(/ya|ia|ja/g, 'a')
+    .replace(/yo|jo/g, 'o')
+    .replace(/ye|je/g, 'e')
+    .replace(/[^a-z]/g, '')
+    .replace(/y/g, 'i')
+    .replace(/(.)\1+/g, '$1')
+}
+
+function phoneticWords(name: string): string[] {
+  return name
     .split(/\s+/)
+    .map(phoneticKey)
     .filter(Boolean)
     .sort()
 }
@@ -217,14 +253,14 @@ export interface PlayerGroupMatch {
 
 /**
  * Finds which single group sheet a player belongs to by exact (order-
- * independent) name match, so a trainee's signup request can be pre-filled
- * with their group. Deliberately strict: a name that matches nobody, or more
- * than one person, returns null rather than guessing — this result later
- * gates what a trainee is allowed to see, so a wrong guess would be a privacy
- * leak, not just a UX glitch.
+ * independent, script-agnostic) name match, so a trainee's signup request
+ * can be pre-filled with their group. Deliberately strict: a name that
+ * matches nobody, or more than one person, returns null rather than guessing
+ * — this result later gates what a trainee is allowed to see, so a wrong
+ * guess would be a privacy leak, not just a UX glitch.
  */
 export async function findPlayerGroup(fullName: string): Promise<PlayerGroupMatch | null> {
-  const target = normalizedNameWords(fullName)
+  const target = phoneticWords(fullName)
   if (target.length === 0) return null
 
   const buffer = await downloadAsXlsxBuffer(getTrainingSpreadsheetId())
@@ -238,7 +274,7 @@ export async function findPlayerGroup(fullName: string): Promise<PlayerGroupMatc
 
       const nameCell = sheet.getRow(r).getCell(NAME_COLUMN).value
       const name = typeof nameCell === 'string' ? nameCell.trim() : ''
-      if (name && sameWords(normalizedNameWords(name), target)) {
+      if (name && sameWords(phoneticWords(name), target)) {
         matches.push({ group: sheet.name, name })
       }
     }
