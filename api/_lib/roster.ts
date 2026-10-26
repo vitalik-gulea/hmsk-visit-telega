@@ -74,6 +74,25 @@ function getGroupSheet(workbook: ExcelJS.Workbook, groupName: string) {
   return sheet
 }
 
+const EXCEL_EPOCH_UTC_MS = Date.UTC(1899, 11, 30)
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+/**
+ * Reads a header cell as a date. Besides real dates this accepts a bare Excel
+ * serial number (what we write into a new column whose pre-formatted blank
+ * cell has no date number format, so it reads back as a plain number) and
+ * text like "11-окт." — otherwise such a column is invisible to us and the
+ * next training would be written over it instead of after it.
+ */
+function headerToDate(value: unknown): Date | null {
+  if (value instanceof Date) return value
+  if (typeof value === 'number' && value > 40000 && value < 80000) {
+    return new Date(EXCEL_EPOCH_UTC_MS + Math.round(value) * MS_PER_DAY)
+  }
+  if (typeof value === 'string') return resolveScheduleDate(value)
+  return null
+}
+
 /**
  * Finds the header column for `targetDate`. If it doesn't exist yet, returns
  * where a new one should go: right after the rightmost column that already
@@ -89,8 +108,8 @@ function locateDateColumn(
   let lastDateColumn = FIRST_DATE_COLUMN - 1
 
   for (let c = FIRST_DATE_COLUMN; c <= sheet.columnCount; c++) {
-    const value = headerRow.getCell(c).value
-    if (value instanceof Date) {
+    const value = headerToDate(headerRow.getCell(c).value)
+    if (value) {
       if (isSameDate(value, targetDate)) return { column: c, exists: true }
       lastDateColumn = c
     }
@@ -241,8 +260,8 @@ export async function getAttendanceStats(
   let total = 0
   let attended = 0
   for (let c = FIRST_DATE_COLUMN; c <= sheet.columnCount; c++) {
-    const headerValue = headerRow.getCell(c).value
-    if (!(headerValue instanceof Date) || !matchesPeriod(headerValue, period)) continue
+    const headerValue = headerToDate(headerRow.getCell(c).value)
+    if (!headerValue || !matchesPeriod(headerValue, period)) continue
 
     total++
     if (cellToPresence(playerRowCells.getCell(c).value) === true) attended++

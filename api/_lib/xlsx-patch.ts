@@ -23,6 +23,12 @@ function columnIndexToLetter(index: number): string {
   return letters
 }
 
+function columnLetterToIndex(ref: string): number {
+  let n = 0
+  for (const ch of ref.match(/^[A-Z]+/)![0]) n = n * 26 + ch.charCodeAt(0) - 64
+  return n
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -78,10 +84,15 @@ function patchRowInSheetXml(sheetXml: string, rowNumber: number, cellRef: string
   } else if (inner.includes(`r="${cellRef}"`)) {
     newInner = patchCellInRowXml(inner, cellRef, value)
   } else {
-    // Cell absent from this row — append it (columns stay monotonically
-    // ordered in every real row of this file, and our target columns are
-    // always the last ones with content).
-    newInner = inner + `<c r="${cellRef}"><v>${value}</v></c>`
+    // Cell absent from this row — insert it before the first cell to its
+    // right so columns stay in order (the sheet has pre-formatted columns
+    // beyond the dates; appending at the end would put it out of order and
+    // Excel/Sheets then drop or "repair" it).
+    const newCell = `<c r="${cellRef}"><v>${value}</v></c>`
+    const targetCol = columnLetterToIndex(cellRef)
+    const cellStarts = [...inner.matchAll(/<c r="([A-Z]+)\d+"/g)]
+    const next = cellStarts.find((m) => columnLetterToIndex(m[1]) > targetCol)
+    newInner = next ? inner.slice(0, next.index) + newCell + inner.slice(next.index!) : inner + newCell
   }
 
   const newRow = `<row r="${rowNumber}"${attrs}>${newInner}</row>`
