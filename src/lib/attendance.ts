@@ -1,3 +1,5 @@
+import { apiFetch } from './api'
+
 export interface AttendanceMonth {
   year: number
   month: number
@@ -11,7 +13,7 @@ export interface AttendanceStats {
 }
 
 export async function fetchAttendanceMonths(group: string): Promise<AttendanceMonth[]> {
-  const response = await fetch(`/api/attendance-months?group=${encodeURIComponent(group)}`)
+  const response = await apiFetch(`/api/attendance-months?group=${encodeURIComponent(group)}`)
   const data = await response.json()
 
   if (!response.ok) {
@@ -22,7 +24,7 @@ export async function fetchAttendanceMonths(group: string): Promise<AttendanceMo
 }
 
 export async function fetchAttendancePlayers(group: string): Promise<string[]> {
-  const response = await fetch(`/api/attendance-players?group=${encodeURIComponent(group)}`)
+  const response = await apiFetch(`/api/attendance-players?group=${encodeURIComponent(group)}`)
   const data = await response.json()
 
   if (!response.ok) {
@@ -37,7 +39,7 @@ export async function fetchAttendanceStats(
   player: string,
   period: string,
 ): Promise<AttendanceStats> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/attendance-stats?group=${encodeURIComponent(group)}&player=${encodeURIComponent(player)}&period=${encodeURIComponent(period)}`,
   )
   const data = await response.json()

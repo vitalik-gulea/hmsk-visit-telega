@@ -1,3 +1,5 @@
+import { apiFetch } from './api'
+
 export interface ScheduleEntry {
   date: string
   day: string
@@ -8,7 +10,7 @@ export interface ScheduleEntry {
 export type WeekFilter = 'all' | 'thisWeek' | 'lastWeek'
 
 export async function fetchSchedule(group: string, filter: WeekFilter = 'all'): Promise<ScheduleEntry[]> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/schedule?group=${encodeURIComponent(group)}&filter=${encodeURIComponent(filter)}`,
   )
   const data = await response.json()

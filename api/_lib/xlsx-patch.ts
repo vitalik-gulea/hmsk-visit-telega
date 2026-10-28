@@ -49,7 +49,17 @@ async function getSheetXmlPath(zip: JSZip, sheetName: string): Promise<string> {
   return `xl/${relMatch[1] ?? relMatch[2]}`
 }
 
-function patchCellInRowXml(rowInner: string, cellRef: string, value: number): string {
+function letterToColumnIndex(letters: string): number {
+  let n = 0
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64)
+  return n
+}
+
+function valuePart(value: number | null): string {
+  return value === null ? '' : `<v>${value}</v>`
+}
+
+function patchCellInRowXml(rowInner: string, cellRef: string, value: number | null): string {
   const cellRegex = new RegExp(`<c r="${cellRef}"([^>]*?)(?:/>|>([\\s\\S]*?)</c>)`)
   const match = rowInner.match(cellRegex)
   if (!match) throw new Error(`Cell ${cellRef} not found in row`)
@@ -59,11 +69,30 @@ function patchCellInRowXml(rowInner: string, cellRef: string, value: number): st
   const formulaMatch = inner.match(/<f[^>]*\/>|<f[^>]*>[\s\S]*?<\/f>/)
   const formulaPart = formulaMatch ? formulaMatch[0] : ''
 
-  const replacement = `<c r="${cellRef}"${attrs}>${formulaPart}<v>${value}</v></c>`
+  const replacement = `<c r="${cellRef}"${attrs}>${formulaPart}${valuePart(value)}</c>`
   return rowInner.slice(0, match.index) + replacement + rowInner.slice(match.index! + match[0].length)
 }
 
-function patchRowInSheetXml(sheetXml: string, rowNumber: number, cellRef: string, value: number): string {
+/** Inserts a new cell keeping the row's cells in ascending column order. */
+function insertCellInRowXml(rowInner: string, cellRef: string, col: number, value: number): string {
+  const newCell = `<c r="${cellRef}"><v>${value}</v></c>`
+  const cellStartRegex = /<c r="([A-Z]+)\d+"/g
+  let match: RegExpExecArray | null
+  while ((match = cellStartRegex.exec(rowInner)) !== null) {
+    if (letterToColumnIndex(match[1]) > col) {
+      return rowInner.slice(0, match.index) + newCell + rowInner.slice(match.index)
+    }
+  }
+  return rowInner + newCell
+}
+
+function patchRowInSheetXml(
+  sheetXml: string,
+  rowNumber: number,
+  cellRef: string,
+  col: number,
+  value: number | null,
+): string {
   const rowRegex = new RegExp(`<row r="${rowNumber}"([^>]*?)(?:/>|>([\\s\\S]*?)</row>)`)
   const match = sheetXml.match(rowRegex)
   if (!match) throw new Error(`Row ${rowNumber} not found`)
@@ -73,15 +102,14 @@ function patchRowInSheetXml(sheetXml: string, rowNumber: number, cellRef: string
 
   let newInner: string
   if (inner === undefined) {
-    // Self-closing, empty row.
+    // Self-closing, empty row. Clearing a cell that doesn't exist is a no-op.
+    if (value === null) return sheetXml
     newInner = `<c r="${cellRef}"><v>${value}</v></c>`
-  } else if (inner.includes(`r="${cellRef}"`)) {
+  } else if (new RegExp(`<c r="${cellRef}"[\\s/>]`).test(inner)) {
     newInner = patchCellInRowXml(inner, cellRef, value)
   } else {
-    // Cell absent from this row — append it (columns stay monotonically
-    // ordered in every real row of this file, and our target columns are
-    // always the last ones with content).
-    newInner = inner + `<c r="${cellRef}"><v>${value}</v></c>`
+    if (value === null) return sheetXml
+    newInner = insertCellInRowXml(inner, cellRef, col, value)
   }
 
   const newRow = `<row r="${rowNumber}"${attrs}>${newInner}</row>`
@@ -91,7 +119,8 @@ function patchRowInSheetXml(sheetXml: string, rowNumber: number, cellRef: string
 export interface CellUpdate {
   row: number
   col: number
-  value: number
+  /** `null` clears the cell's value. */
+  value: number | null
 }
 
 export async function patchXlsxCells(
@@ -108,7 +137,7 @@ export async function patchXlsxCells(
 
   for (const { row, col, value } of updates) {
     const cellRef = `${columnIndexToLetter(col)}${row}`
-    sheetXml = patchRowInSheetXml(sheetXml, row, cellRef, value)
+    sheetXml = patchRowInSheetXml(sheetXml, row, cellRef, col, value)
   }
 
   zip.file(sheetPath, sheetXml)

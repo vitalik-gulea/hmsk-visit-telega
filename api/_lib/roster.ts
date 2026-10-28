@@ -3,6 +3,7 @@ import { downloadAsXlsxBuffer, uploadXlsxBuffer } from './drive.js'
 import { resolveScheduleDate, isSameDate, toExcelSerialDate } from './dates.js'
 import { patchXlsxCells } from './xlsx-patch.js'
 import { getRequiredEnv } from './env.js'
+import { UserFacingError } from './http.js'
 
 function getTrainingSpreadsheetId(): string {
   return getRequiredEnv('TRAINING_SPREADSHEET_ID')
@@ -26,7 +27,10 @@ export interface Roster {
 
 export interface AttendanceUpdate {
   row: number
-  present: boolean
+  /** Expected name in that row — guards against the sheet shifting under us. */
+  name: string
+  /** `null` clears the cell (used for coaches who didn't run the training). */
+  present: boolean | null
 }
 
 export type AttendancePeriod = { type: 'all' } | { type: 'month'; year: number; month: number }
@@ -70,8 +74,18 @@ async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
 
 function getGroupSheet(workbook: ExcelJS.Workbook, groupName: string) {
   const sheet = workbook.getWorksheet(groupName)
-  if (!sheet) throw new Error(`Группа "${groupName}" не найдена в таблице учёта`)
+  if (!sheet) throw new UserFacingError(`Группа "${groupName}" не найдена в таблице учёта`)
   return sheet
+}
+
+/**
+ * Date headers are real dates in most columns but a few were typed as text
+ * ("05.09", "4-сент."), so both forms count as a date column.
+ */
+function headerToDate(value: unknown): Date | null {
+  if (value instanceof Date) return value
+  if (typeof value === 'string') return resolveScheduleDate(value)
+  return null
 }
 
 /**
@@ -89,16 +103,16 @@ function locateDateColumn(
   let lastDateColumn = FIRST_DATE_COLUMN - 1
 
   for (let c = FIRST_DATE_COLUMN; c <= sheet.columnCount; c++) {
-    const value = headerRow.getCell(c).value
-    if (value instanceof Date) {
-      if (isSameDate(value, targetDate)) return { column: c, exists: true }
+    const date = headerToDate(headerRow.getCell(c).value)
+    if (date) {
+      if (isSameDate(date, targetDate)) return { column: c, exists: true }
       lastDateColumn = c
     }
   }
 
   const nextColumn = lastDateColumn + 1
   if (nextColumn > sheet.columnCount) {
-    throw new Error(
+    throw new UserFacingError(
       `В таблице для группы "${sheet.name}" не осталось свободных колонок для новой даты`,
     )
   }
@@ -107,7 +121,7 @@ function locateDateColumn(
 
 function resolveTargetDate(rawDate: string): Date {
   const targetDate = resolveScheduleDate(rawDate)
-  if (!targetDate) throw new Error(`Не удалось распознать дату: ${rawDate}`)
+  if (!targetDate) throw new UserFacingError(`Не удалось распознать дату: ${rawDate}`)
   return targetDate
 }
 
@@ -132,14 +146,7 @@ function readEntry(
   return { row, name, present: exists ? cellToPresence(presentCell) : null }
 }
 
-export async function getRoster(groupName: string, rawDate: string): Promise<Roster> {
-  const targetDate = resolveTargetDate(rawDate)
-
-  const buffer = await downloadAsXlsxBuffer(getTrainingSpreadsheetId())
-  const workbook = await loadWorkbook(buffer)
-  const sheet = getGroupSheet(workbook, groupName)
-  const { column: dateColumn, exists } = locateDateColumn(sheet, targetDate)
-
+function readRoster(sheet: ExcelJS.Worksheet, dateColumn: number, exists: boolean): Roster {
   const players: RosterEntry[] = []
   for (let r = FIRST_DATA_ROW; r <= sheet.rowCount; r++) {
     // Every real kid has a sequential number in column A. The row right
@@ -177,6 +184,17 @@ export async function getRoster(groupName: string, rawDate: string): Promise<Ros
   }
 
   return { players, coaches }
+}
+
+export async function getRoster(groupName: string, rawDate: string): Promise<Roster> {
+  const targetDate = resolveTargetDate(rawDate)
+
+  const buffer = await downloadAsXlsxBuffer(getTrainingSpreadsheetId())
+  const workbook = await loadWorkbook(buffer)
+  const sheet = getGroupSheet(workbook, groupName)
+  const { column: dateColumn, exists } = locateDateColumn(sheet, targetDate)
+
+  return readRoster(sheet, dateColumn, exists)
 }
 
 export async function getGroupPlayerNames(groupName: string): Promise<string[]> {
@@ -232,7 +250,7 @@ export async function getAttendanceStats(
 
   const playerRow = findPlayerRow(sheet, playerName)
   if (playerRow === null) {
-    throw new Error(`Игрок "${playerName}" не найден в группе "${groupName}"`)
+    throw new UserFacingError(`Игрок "${playerName}" не найден в группе "${groupName}"`)
   }
 
   const headerRow = sheet.getRow(1)
@@ -241,8 +259,8 @@ export async function getAttendanceStats(
   let total = 0
   let attended = 0
   for (let c = FIRST_DATE_COLUMN; c <= sheet.columnCount; c++) {
-    const headerValue = headerRow.getCell(c).value
-    if (!(headerValue instanceof Date) || !matchesPeriod(headerValue, period)) continue
+    const headerDate = headerToDate(headerRow.getCell(c).value)
+    if (!headerDate || !matchesPeriod(headerDate, period)) continue
 
     total++
     if (cellToPresence(playerRowCells.getCell(c).value) === true) attended++
@@ -265,16 +283,32 @@ export async function saveAttendance(
   // the actual cells via raw XML surgery (see xlsx-patch.ts) on the original
   // downloaded bytes, never through exceljs's writer.
   const spreadsheetId = getTrainingSpreadsheetId()
-  const originalBuffer = await downloadAsXlsxBuffer(spreadsheetId)
+  // Fresh download: we upload the whole file back, so a cached copy could
+  // revert saves made since (e.g. another group saved on a different instance).
+  const originalBuffer = await downloadAsXlsxBuffer(spreadsheetId, { fresh: true })
   const workbook = await loadWorkbook(originalBuffer)
   const sheet = getGroupSheet(workbook, groupName)
   const { column: dateColumn, exists } = locateDateColumn(sheet, targetDate)
 
-  const cellUpdates = updates.map(({ row, present }) => ({
-    row,
-    col: dateColumn,
-    value: present ? 1 : 0,
-  }))
+  // Only real roster rows may be written — never the header, the "ИТОГО"
+  // totals row or anything else — and each must still hold the expected name.
+  const { players, coaches } = readRoster(sheet, dateColumn, exists)
+  const nameByRow = new Map([...players, ...coaches].map((entry) => [entry.row, entry.name]))
+  for (const { row, name } of updates) {
+    if (nameByRow.get(row)?.trim() !== name.trim()) {
+      throw new UserFacingError(
+        `Таблица изменилась (строка ${row} теперь не "${name}"). Обновите список и отметьте заново`,
+      )
+    }
+  }
+
+  const cellUpdates: { row: number; col: number; value: number | null }[] = updates.map(
+    ({ row, present }) => ({
+      row,
+      col: dateColumn,
+      value: present === null ? null : present ? 1 : 0,
+    }),
+  )
 
   if (!exists) {
     // Brand-new date column: write its header value first. Note this does

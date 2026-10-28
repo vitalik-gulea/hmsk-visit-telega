@@ -1,20 +1,28 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { canAccessGroup, requireAllowedUser } from './_lib/auth.js'
+import { respondWithError } from './_lib/http.js'
 import { fetchGroupScheduleMonths } from './_lib/schedule.js'
-import { notifyAdminError } from './_lib/telegram.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const group = req.query.group
-
-  if (typeof group !== 'string' || !group) {
-    res.status(400).json({ error: 'Missing "group" query parameter' })
-    return
-  }
-
   try {
+    const user = await requireAllowedUser(req, res)
+    if (!user) return
+
+    const group = req.query.group
+
+    if (typeof group !== 'string' || !group) {
+      res.status(400).json({ error: 'Missing "group" query parameter' })
+      return
+    }
+
+    if (!canAccessGroup(user, group)) {
+      res.status(403).json({ error: 'Нет доступа к этой группе' })
+      return
+    }
+
     const months = await fetchGroupScheduleMonths(group)
     res.status(200).json({ months })
   } catch (error) {
-    await notifyAdminError('GET /api/attendance-months', error)
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
+    await respondWithError(res, 'GET /api/attendance-months', error)
   }
 }

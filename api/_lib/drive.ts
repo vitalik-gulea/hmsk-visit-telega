@@ -51,7 +51,20 @@ async function fetchXlsxBuffer(fileId: string): Promise<Buffer> {
   return Buffer.from(await contentResponse.arrayBuffer())
 }
 
-export async function downloadAsXlsxBuffer(fileId: string): Promise<Buffer> {
+/**
+ * `fresh` skips the cache: a save patches this buffer and uploads it back over
+ * the whole file, so a stale copy would silently revert anything saved since.
+ */
+export async function downloadAsXlsxBuffer(
+  fileId: string,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<Buffer> {
+  if (fresh) {
+    const buffer = await fetchXlsxBuffer(fileId)
+    xlsxCache.set(fileId, { buffer, expiresAt: Date.now() + XLSX_CACHE_TTL_MS })
+    return buffer
+  }
+
   const cached = xlsxCache.get(fileId)
   if (cached && cached.expiresAt > Date.now()) return cached.buffer
 

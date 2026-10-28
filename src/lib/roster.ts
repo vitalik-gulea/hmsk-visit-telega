@@ -1,3 +1,5 @@
+import { apiFetch } from './api'
+
 export interface RosterEntry {
   row: number
   name: string
@@ -6,7 +8,8 @@ export interface RosterEntry {
 
 export interface AttendanceUpdate {
   row: number
-  present: boolean
+  name: string
+  present: boolean | null
 }
 
 export interface Roster {
@@ -15,7 +18,7 @@ export interface Roster {
 }
 
 export async function fetchRoster(group: string, date: string): Promise<Roster> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/roster?group=${encodeURIComponent(group)}&date=${encodeURIComponent(date)}`,
   )
   const data = await response.json()
@@ -32,7 +35,7 @@ export async function saveAttendance(
   date: string,
   updates: AttendanceUpdate[],
 ): Promise<void> {
-  const response = await fetch('/api/roster', {
+  const response = await apiFetch('/api/roster', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ group, date, updates }),

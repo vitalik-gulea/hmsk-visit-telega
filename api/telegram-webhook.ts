@@ -1,7 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { getRequiredEnv } from './_lib/env.js'
-import { answerCallbackQuery, editMessageText, notifyAdminError, sendTelegramMessage } from './_lib/telegram.js'
-import { appendAllowedUser, ROLE_COACH, ROLE_TRAINEE, type UserRole } from './_lib/users-sheet.js'
+import {
+  answerCallbackQuery,
+  editMessageText,
+  notifyAdminError,
+  safeEqual,
+  sendTelegramMessage,
+} from './_lib/telegram.js'
+import { appendAllowedUser, isUserAllowed, ROLE_COACH, ROLE_TRAINEE, type UserRole } from './_lib/users-sheet.js'
 
 interface TelegramCallbackQuery {
   id: string
@@ -43,7 +49,7 @@ function parseRequestMessage(text: string): ParsedRequest {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const secret = req.headers['x-telegram-bot-api-secret-token']
-    if (secret !== getRequiredEnv('TELEGRAM_WEBHOOK_SECRET')) {
+    if (typeof secret !== 'string' || !safeEqual(secret, getRequiredEnv('TELEGRAM_WEBHOOK_SECRET'))) {
       res.status(401).json({ error: 'Invalid secret token' })
       return
     }
@@ -64,10 +70,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [action, idStr] = callbackQuery.data.split(':')
     const { chat, message_id: messageId, text = '' } = callbackQuery.message
 
+    // The button's id must match the id printed in the request itself, so a
+    // tampered callback can't approve someone other than who the admin read.
+    const requestIdLine = text.match(/^ID: (\d+)$/m)?.[1]
+    if (!/^\d+$/.test(idStr ?? '') || requestIdLine !== idStr) {
+      await answerCallbackQuery(callbackQuery.id, 'Некорректный запрос')
+      res.status(200).json({ ok: true })
+      return
+    }
+
     try {
       if (action === 'a') {
         const { firstName, lastName, username, role, fullName, group } = parseRequestMessage(text)
-        await appendAllowedUser({ id: Number(idStr), firstName, lastName, username, role, fullName, group })
+        // Idempotent: a double tap must not append a duplicate row.
+        if (!(await isUserAllowed(Number(idStr)))) {
+          await appendAllowedUser({ id: Number(idStr), firstName, lastName, username, role, fullName, group })
+        }
 
         const userMessage =
           role === ROLE_TRAINEE
@@ -112,7 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     await notifyAdminError('telegram-webhook', error)
     if (!res.headersSent) {
-      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
+      res.status(500).json({ error: 'Internal error' })
     }
   }
 }

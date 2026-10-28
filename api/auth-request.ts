@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { requestAccess } from './_lib/access-request.js'
-import { notifyAdminError, verifyInitData } from './_lib/telegram.js'
+import { respondWithError } from './_lib/http.js'
+import { verifyInitData } from './_lib/telegram.js'
 import { ROLE_COACH, ROLE_TRAINEE } from './_lib/users-sheet.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -17,6 +18,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (role !== ROLE_COACH && role !== ROLE_TRAINEE) {
       res.status(400).json({ error: 'Missing or invalid "role" in body' })
+      return
+    }
+    // Hard caps: these end up in a Telegram message and a Sheets row.
+    if (
+      (typeof fullName === 'string' && fullName.length > 200) ||
+      (typeof group === 'string' && group.length > 100)
+    ) {
+      res.status(400).json({ error: 'Слишком длинные значения' })
       return
     }
     if (role === ROLE_TRAINEE && (typeof fullName !== 'string' || !fullName.trim())) {
@@ -42,7 +51,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
     res.status(200).json({ ok: true, alreadyAllowed })
   } catch (error) {
-    await notifyAdminError('POST /api/auth-request', error)
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
+    await respondWithError(res, 'POST /api/auth-request', error)
   }
 }

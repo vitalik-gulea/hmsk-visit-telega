@@ -7,6 +7,7 @@ import { fetchRoster, saveAttendance, type Roster, type RosterEntry } from '../l
 interface Decision {
   row: number
   name: string
+  section: 'player' | 'coach'
   present: boolean
 }
 
@@ -64,7 +65,10 @@ export function RosterPage() {
 
   function handleDecision(present: boolean) {
     if (!currentEntry) return
-    setDecisions((prev) => [{ row: currentEntry.row, name: currentEntry.name, present }, ...prev])
+    setDecisions((prev) => [
+      { row: currentEntry.row, name: currentEntry.name, section: currentEntry.section, present },
+      ...prev,
+    ])
     setCurrentIndex((prev) => prev + 1)
   }
 
@@ -84,7 +88,12 @@ export function RosterPage() {
     saveAttendance(
       selectedGroup,
       selectedDate,
-      decisions.map(({ row, present }) => ({ row, present })),
+      // A coach who didn't run the training gets an empty cell, not a 0.
+      decisions.map(({ row, name, section, present }) => ({
+        row,
+        name,
+        present: section === 'coach' && !present ? null : present,
+      })),
     )
       .then(() => setSaveState('saved'))
       .catch((err: Error) => {

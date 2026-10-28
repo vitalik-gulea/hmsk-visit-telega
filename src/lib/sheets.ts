@@ -1,3 +1,5 @@
+import { apiFetch } from './api'
+
 export const TRAINING_SPREADSHEET_ID = import.meta.env.VITE_TRAINING_SPREADSHEET_ID as string
 
 export interface SheetInfo {
@@ -6,7 +8,7 @@ export interface SheetInfo {
 }
 
 async function fetchSheetsFromApi(spreadsheetId: string): Promise<SheetInfo[]> {
-  const response = await fetch(`/api/sheets?spreadsheetId=${encodeURIComponent(spreadsheetId)}`)
+  const response = await apiFetch(`/api/sheets?spreadsheetId=${encodeURIComponent(spreadsheetId)}`)
   const data = await response.json()
 
   if (!response.ok) {

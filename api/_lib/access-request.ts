@@ -1,4 +1,5 @@
 import { getRequiredEnv } from './env.js'
+import { UserFacingError } from './http.js'
 import { sendTelegramMessage, type TelegramUser } from './telegram.js'
 import { getGroupPlayerNames } from './roster.js'
 import { isUserAllowed, ROLE_TRAINEE, type UserRole } from './users-sheet.js'
@@ -21,7 +22,11 @@ export async function requestAccess(
   if (await isUserAllowed(user.id)) return { alreadyAllowed: true }
 
   const adminChatId = getRequiredEnv('TELEGRAM_ADMIN_CHAT_ID')
-  const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Без имени'
+  // The webhook re-parses this message line by line, so a name containing a
+  // newline must never be able to forge extra "Роль: ..." / "Группа: ..." lines.
+  const displayName =
+    [user.firstName, user.lastName].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 100) ||
+    'Без имени'
   const username = user.username ? `@${user.username}` : '—'
 
   const lines = [
@@ -41,7 +46,7 @@ export async function requestAccess(
     // privacy leak, not just a UX glitch.
     const players = trimmedGroup ? await getGroupPlayerNames(trimmedGroup) : []
     if (!trimmedFullName || !trimmedGroup || !players.includes(trimmedFullName)) {
-      throw new Error('Выбранные группа и игрок не найдены в таблице учёта')
+      throw new UserFacingError('Выбранные группа и игрок не найдены в таблице учёта')
     }
 
     lines.push(`ФИО в списке: ${trimmedFullName}`, `Группа: ${trimmedGroup}`)

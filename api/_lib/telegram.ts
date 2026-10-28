@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { getRequiredEnv } from './env.js'
 
 export interface TelegramUser {
@@ -9,6 +9,13 @@ export interface TelegramUser {
 }
 
 const MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60
+
+/** Constant-time string comparison, so secrets/hashes can't be probed byte by byte. */
+export function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB)
+}
 
 /**
  * Validates Telegram Mini App initData per
@@ -28,7 +35,7 @@ export function verifyInitData(initData: string): TelegramUser | null {
 
   const secretKey = createHmac('sha256', 'WebAppData').update(getRequiredEnv('TELEGRAM_BOT_TOKEN')).digest()
   const computedHash = createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
-  if (computedHash !== hash) return null
+  if (!safeEqual(computedHash, hash)) return null
 
   const authDate = Number(params.get('auth_date'))
   if (!authDate || Date.now() / 1000 - authDate > MAX_INIT_DATA_AGE_SECONDS) return null
@@ -36,12 +43,13 @@ export function verifyInitData(initData: string): TelegramUser | null {
   const userJson = params.get('user')
   if (!userJson) return null
 
-  const raw = JSON.parse(userJson) as {
-    id: number
-    first_name?: string
-    last_name?: string
-    username?: string
+  let raw: { id: number; first_name?: string; last_name?: string; username?: string }
+  try {
+    raw = JSON.parse(userJson)
+  } catch {
+    return null
   }
+  if (!raw || typeof raw.id !== 'number') return null
 
   return {
     id: raw.id,

@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { canAccessGroup, requireAllowedUser } from './_lib/auth.js'
+import { respondWithError } from './_lib/http.js'
 import { getAttendanceStats, type AttendancePeriod } from './_lib/roster.js'
-import { notifyAdminError } from './_lib/telegram.js'
+import { ROLE_TRAINEE } from './_lib/users-sheet.js'
 
 function parsePeriod(raw: string): AttendancePeriod | null {
   if (raw === 'all') return { type: 'all' }
@@ -16,26 +18,34 @@ function parsePeriod(raw: string): AttendancePeriod | null {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const group = req.query.group
-  const player = req.query.player
-  const periodRaw = req.query.period
-
-  if (typeof group !== 'string' || !group || typeof player !== 'string' || !player) {
-    res.status(400).json({ error: 'Missing "group" or "player" query parameter' })
-    return
-  }
-
-  const period = typeof periodRaw === 'string' ? parsePeriod(periodRaw) : null
-  if (!period) {
-    res.status(400).json({ error: 'Missing or invalid "period" query parameter' })
-    return
-  }
-
   try {
+    const user = await requireAllowedUser(req, res)
+    if (!user) return
+
+    const group = req.query.group
+    const player = req.query.player
+    const periodRaw = req.query.period
+
+    if (typeof group !== 'string' || !group || typeof player !== 'string' || !player) {
+      res.status(400).json({ error: 'Missing "group" or "player" query parameter' })
+      return
+    }
+
+    const period = typeof periodRaw === 'string' ? parsePeriod(periodRaw) : null
+    if (!period) {
+      res.status(400).json({ error: 'Missing or invalid "period" query parameter' })
+      return
+    }
+
+    // A trainee may only see their own numbers, not their teammates'.
+    if (!canAccessGroup(user, group) || (user.role === ROLE_TRAINEE && user.fullName.trim() !== player.trim())) {
+      res.status(403).json({ error: 'Нет доступа' })
+      return
+    }
+
     const stats = await getAttendanceStats(group, player, period)
     res.status(200).json(stats)
   } catch (error) {
-    await notifyAdminError('GET /api/attendance-stats', error)
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' })
+    await respondWithError(res, 'GET /api/attendance-stats', error)
   }
 }
